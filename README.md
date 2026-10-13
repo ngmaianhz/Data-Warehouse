@@ -1,3 +1,24 @@
+olist_data_warehouse/
+├── data/
+│   └── raw/                        # Chứa file gốc data.xlsx[cite: 498, 499]
+├── dbt_olist/                      # Thư mục dự án dbt[cite: 499]
+│   ├── models/
+│   │   ├── bronze/                 # Tầng thô (Nguyên vẹn 9 sheet)[cite: 499]
+│   │   ├── silver/                 # Tầng sạch (Clean Data, chuẩn hóa)[cite: 499, 500]
+│   │   └── gold/                   # Tầng đa chiều (Star Schema, Fact, Dim)[cite: 500]
+│   ├── dbt_project.yml
+│   └── profiles.yml
+├── notebooks/                      # Dùng cho Google Colab / Jupyter Notebook
+│   ├── 01_eda_data_quality.ipynb   # Khám phá dữ liệu và kiểm tra Missing Values[cite: 498, 499]
+│   └── 02_rfm_kmeans.ipynb         # Tính toán RFM và phân cụm K-Means[cite: 500]
+├── scripts/
+│   └── ingest_duckdb.py            # Script Python nạp dữ liệu từ Excel vào DuckDB[cite: 499]
+├── app/
+│   └── dashboard.py                # Streamlit Dashboard cho CRM[cite: 500]
+├── requirements.txt                # Danh sách thư viện phụ thuộc
+└── README.md                       # Tài liệu mô tả dự án
+
+
 # Olist E-Commerce Data Warehouse
 
 ## 1. Giới thiệu Dự án
