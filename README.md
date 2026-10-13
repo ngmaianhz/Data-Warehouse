@@ -1,3 +1,4 @@
+```text
 olist_data_warehouse/
 ├── data/
 │   └── raw/                        # Chứa file gốc data.xlsx[cite: 498, 499]
@@ -17,7 +18,7 @@ olist_data_warehouse/
 │   └── dashboard.py                # Streamlit Dashboard cho CRM[cite: 500]
 ├── requirements.txt                # Danh sách thư viện phụ thuộc
 └── README.md                       # Tài liệu mô tả dự án
-
+```
 
 # Olist E-Commerce Data Warehouse
 
