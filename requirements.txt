@@ -1,6 +1,7 @@
 # Data Ingestion & Transformation
-duckdb==0.10.1
-dbt-duckdb==1.7.3
+duckdb>=1.0.0
+python-dotenv>=1.0.0
+dbt-duckdb>=1.8.0
 openpyxl==3.1.2
 
 # Data Analysis & EDA

@@ -1,0 +1,8 @@
+dbt_olist:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'md:olist_warehouse'
+      threads: 4
+      token: "{{ env_var('MOTHERDUCK_TOKEN') }}"

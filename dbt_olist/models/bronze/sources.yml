@@ -1,0 +1,48 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "Nguồn dữ liệu thô (Bronze Layer) được ingest trực tiếp từ các file CSV của Olist vào MotherDuck Cloud"
+    database: olist_warehouse
+    schema: main
+    loaded_at_field: _load_timestamp
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+
+    tables:
+      - name: olist_customers_dataset
+        description: "Dữ liệu thô khách hàng, thông tin địa chỉ và mã định danh khách hàng"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_geolocation_dataset
+        description: "Dữ liệu thô tọa độ địa lý (vĩ độ, kinh độ, thành phố, bang) theo mã zip code prefix"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_order_items_dataset
+        description: "Dữ liệu thô từng mặt hàng trong đơn hàng, giá bán, phí vận chuyển và mã người bán"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_order_payments_dataset
+        description: "Dữ liệu thô các phương thức thanh toán, số tiền và số kỳ trả góp của từng đơn hàng"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_order_reviews_dataset
+        description: "Dữ liệu thô đánh giá của khách hàng, điểm số review và nội dung nhận xét"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_orders_dataset
+        description: "Dữ liệu thô tổng quan đơn hàng, trạng thái và các mốc thời gian xử lý đơn"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_products_dataset
+        description: "Dữ liệu thô danh mục sản phẩm, kích thước, khối lượng và tên ngành hàng"
+        loaded_at_field: _load_timestamp
+
+      - name: olist_sellers_dataset
+        description: "Dữ liệu thô người bán hàng, mã định danh và địa chỉ người bán"
+        loaded_at_field: _load_timestamp
+
+      - name: product_category_name_translation
+        description: "Bảng tra cứu dịch tên ngành hàng từ tiếng Bồ Đào Nha sang tiếng Anh"
+        loaded_at_field: _load_timestamp
