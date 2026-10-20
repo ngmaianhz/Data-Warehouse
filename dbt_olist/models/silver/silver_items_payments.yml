@@ -1,0 +1,144 @@
+version: 2
+
+models:
+  - name: silver_order_items
+    description: >
+      Bảng mặt hàng chi tiết thuộc Tầng Silver. Đã chuẩn hóa kiểu dữ liệu số học,
+      tính toán item_value và kiểm tra tính hợp lệ của đơn giá/cước ship.
+      Bảo toàn 100% số dòng so với Bronze (112,650 dòng).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_id
+    columns:
+      - name: order_item_key
+        description: "Khóa thay thế (Surrogate Key) băm từ order_id và order_item_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh đơn hàng (Degenerate Dimension, phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: order_item_id
+        description: "Số thứ tự mặt hàng tuần tự trong đơn (phần 2 của PK ghép, 1..N)"
+        tests:
+          - not_null
+
+      - name: product_id
+        description: "Khóa ngoại trỏ đến sản phẩm"
+        tests:
+          - not_null
+
+      - name: seller_id
+        description: "Khóa ngoại trỏ đến người bán"
+        tests:
+          - not_null
+
+      - name: shipping_limit_date
+        description: "Mốc thời hạn người bán phải giao hàng cho bưu cục"
+        tests:
+          - not_null
+
+      - name: price
+        description: "Giá bán của một sản phẩm (DECIMAL 10,2)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: freight_value
+        description: "Cước phí vận chuyển phân bổ cho mặt hàng (DECIMAL 10,2)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: item_value
+        description: >
+          Tổng giá trị mặt hàng (price + freight_value). Phục vụ làm trọng số phân bổ thanh toán
+          ở Task GD3.20 (fact_sales). Đây là chỉ số đối soát nội bộ tầng Silver, không thay thế cho GMV chính thức ở tầng Gold.
+        tests:
+          - not_null
+
+      - name: is_valid_price
+        description: "Cờ kiểm toán: TRUE nếu price >= 0 và NOT NULL, FALSE nếu ngược lại"
+        tests:
+          - not_null
+
+      - name: is_valid_freight
+        description: "Cờ kiểm toán: TRUE nếu freight_value >= 0 và NOT NULL, FALSE nếu ngược lại"
+        tests:
+          - not_null
+
+      - name: is_high_freight_ratio
+        description: "Cờ cảnh báo vận hành: TRUE nếu freight_value > 2 * price và price > 0"
+        tests:
+          - not_null
+
+  - name: silver_order_payments
+    description: >
+      Bảng thanh toán đơn hàng thuộc Tầng Silver. Chuẩn hóa phương thức thanh toán,
+      gắn cờ giao dịch bằng 0 / âm theo phát hiện EDA, bảo toàn 100% số dòng Bronze (103,886 dòng).
+      Tuyệt đối chưa aggregate ở tầng này để tránh bẫy Fan-Out ở Gold.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - payment_sequential
+    columns:
+      - name: payment_key
+        description: "Khóa thay thế (Surrogate Key) băm từ order_id và payment_sequential"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh đơn hàng (phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: payment_sequential
+        description: "Số thứ tự đợt thanh toán của đơn hàng (1..M)"
+        tests:
+          - not_null
+
+      - name: payment_type
+        description: "Phương thức thanh toán đã chuẩn hóa (credit_card, boleto, voucher, debit_card, unknown)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'unknown']
+
+      - name: payment_installments
+        description: "Số kỳ trả góp"
+        tests:
+          - not_null
+
+      - name: payment_value
+        description: "Số tiền thanh toán thực tế của đợt thanh toán (DECIMAL 10,2)"
+        tests:
+          - not_null
+
+      - name: is_zero_payment
+        description: "Cờ kiểm toán: TRUE nếu payment_value = 0.00 (thanh toán voucher 100%)"
+        tests:
+          - not_null
+
+      - name: is_negative_payment
+        description: "Cờ kiểm toán: TRUE nếu payment_value < 0.00 (giao dịch lỗi/hoàn trả bất thường)"
+        tests:
+          - not_null
+
+      - name: is_valid_payment_value
+        description: "Cờ kiểm toán kế toán: TRUE nếu payment_value >= 0.00 và NOT NULL, FALSE nếu < 0 hoặc NULL"
+        tests:
+          - not_null
+
+      - name: is_voucher_payment
+        description: "Cờ phân tích: TRUE nếu payment_type = 'voucher'"
+        tests:
+          - not_null
