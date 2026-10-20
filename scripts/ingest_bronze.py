@@ -23,18 +23,38 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+# Cấu hình UTF-8 cho console Windows ngay đầu file (tránh UnicodeEncodeError khi in tiếng Việt hoặc --help)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import duckdb
 
-from bronze_log import (count_csv_rows, create_log_table, get_schema_snapshot,
-                        short_error, write_log)
+# Thư mục gốc repo và thư mục scripts (hỗ trợ import cả khi chạy từ root hoặc scripts/)
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
+for p in (str(ROOT), str(SCRIPT_DIR)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
+# Nạp .env ngay đầu module để các hàm kết nối luôn sẵn sàng biến môi trường
 try:
     from dotenv import load_dotenv
-except ImportError:  # không cài python-dotenv thì vẫn chạy được nếu đã set biến môi trường
+    load_dotenv(ROOT / ".env")
+except ImportError:
     load_dotenv = None
 
-# Thư mục gốc repo (file này nằm trong scripts/)
-ROOT = Path(__file__).resolve().parent.parent
+# Import từ bronze_log (hỗ trợ import trực tiếp hoặc qua package scripts)
+try:
+    from bronze_log import (count_csv_rows, create_log_table, get_schema_snapshot,
+                            short_error, write_log)
+except ImportError:
+    from scripts.bronze_log import (count_csv_rows, create_log_table, get_schema_snapshot,
+                                    short_error, write_log)
+
 
 # Tên file CSV -> tên bảng Bronze
 TABLES = {
@@ -62,8 +82,8 @@ def connect(target):
         token = token.strip()
         os.environ["motherduck_token"] = token
         os.environ["MOTHERDUCK_TOKEN"] = token
-        db_name = target[3:]
-        con = duckdb.connect("md:")
+        db_name = target[3:].strip() or os.environ.get("MOTHERDUCK_DATABASE", "olist_warehouse").strip()
+        con = duckdb.connect(f"md:?motherduck_token={token}")
         con.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
         con.execute(f"USE {db_name}")
         return con
@@ -118,12 +138,6 @@ def main():
     parser.add_argument("--db", default=DEFAULT_DB,
                         help="md:<tên_db> cho MotherDuck, hoặc đường dẫn file .duckdb để test")
     args = parser.parse_args()
-
-    # in tiếng Việt không lỗi trên terminal Windows
-    sys.stdout.reconfigure(encoding="utf-8")
-    # đọc token từ file .env (đã có trong .gitignore, theo GD3.1)
-    if load_dotenv:
-        load_dotenv(ROOT / ".env")
 
     data_dir = Path(args.data_dir)
     con = connect(args.db)
