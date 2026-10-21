@@ -1,0 +1,68 @@
+version: 2
+
+models:
+  - name: silver_order_reviews
+    description: >
+      Bảng đánh giá đơn hàng thuộc Tầng Silver (chuẩn hóa từ olist_order_reviews_dataset).
+      Bảo toàn 100% số dòng so với Bronze (99,224 dòng duy nhất) nhờ khóa chính ghép (review_id, order_id).
+      Điểm đánh giá (review_score) đã được ép kiểu sang INT.
+      Comment title bị NULL được điền chuỗi rỗng ''.
+      Cột cờ boolean has_comment_message đánh dấu các đánh giá có nội dung bình luận thực tế (1: có, 0: không).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - review_id
+            - order_id
+    columns:
+      - name: review_key
+        description: "Khóa thay thế (Surrogate Key) băm từ review_id và order_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: review_id
+        description: "Mã định danh đánh giá (phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh đơn hàng (phần 2 của PK ghép, Foreign Key)"
+        tests:
+          - not_null
+
+      - name: review_score
+        description: "Điểm đánh giá sao từ khách hàng (INTEGER: 1 đến 5)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+
+      - name: review_comment_title
+        description: "Tiêu đề bình luận đánh giá (đã thay thế NULL bằng chuỗi rỗng '')"
+        tests:
+          - not_null
+
+      - name: review_comment_message
+        description: "Nội dung phản hồi chi tiết từ khách hàng"
+
+      - name: has_comment_message
+        description: "Cờ boolean (1: có bình luận chữ thực tế, 0: không có)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: review_creation_date
+        description: "Thời điểm hệ thống gửi phiếu khảo sát đánh giá đến khách hàng"
+
+      - name: review_answer_timestamp
+        description: "Thời điểm khách hàng gửi câu trả lời đánh giá"
+
+      - name: _load_timestamp
+        description: "Mốc thời gian nạp dữ liệu từ Bronze"
+
+      - name: _source_file
+        description: "Tên file CSV nguồn"
+
+      - name: _run_id
+        description: "Mã lượt chạy pipeline ingestion"
