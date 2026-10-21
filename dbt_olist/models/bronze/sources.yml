@@ -1,48 +1,82 @@
 version: 2
 
+# ==============================================================================
+# GD3.7 - Observability Baseline cho Bronze Layer (Olist Data Warehouse - Team 7)
+# ==============================================================================
+# LƯU Ý QUAN TRỌNG VỀ FRESHNESS:
+# Olist là bộ dữ liệu lịch sử TĨNH (giao dịch từ 2016-2018).
+# _load_timestamp phản ánh THỜI ĐIỂM PIPELINE NẠP (ingest_bronze.py) CHẠY LẦN CUỐI,
+# KHÔNG phản ánh độ tươi nghiệp vụ của dữ liệu thực tế.
+# warn_after: 24h  -> Cảnh báo nếu > 24h chưa chạy lại pipeline nạp
+# error_after: 168h -> Báo động nếu > 7 ngày chưa chạy lại pipeline nạp
+# ==============================================================================
+
 sources:
   - name: bronze
-    description: "Nguồn dữ liệu thô (Bronze Layer) được ingest trực tiếp từ các file CSV của Olist vào MotherDuck Cloud"
+    description: >
+      Nguồn dữ liệu thô (Bronze Layer) được ingest trực tiếp từ 9 file CSV của Olist.
+      Dữ liệu lưu trữ dạng append-only, all_varchar=true kèm 3 cột metadata:
+      _load_timestamp, _source_file, _run_id.
     database: olist_warehouse
     schema: main
     loaded_at_field: _load_timestamp
+
     freshness:
-      warn_after: {count: 24, period: hour}
-      error_after: {count: 48, period: hour}
+      warn_after:  { count: 24,  period: hour }
+      error_after: { count: 168, period: hour }
 
     tables:
       - name: olist_customers_dataset
-        description: "Dữ liệu thô khách hàng, thông tin địa chỉ và mã định danh khách hàng"
+        identifier: bronze_customers
+        description: "Dữ liệu thô khách hàng"
+        loaded_at_field: _load_timestamp
+
+      - name: raw_customers
+        identifier: bronze_customers
+        description: "Alias cho bronze_customers (dùng cho model silver_customers)"
         loaded_at_field: _load_timestamp
 
       - name: olist_geolocation_dataset
-        description: "Dữ liệu thô tọa độ địa lý (vĩ độ, kinh độ, thành phố, bang) theo mã zip code prefix"
+        identifier: bronze_geolocation
+        description: "Dữ liệu thô tọa độ địa lý"
         loaded_at_field: _load_timestamp
 
       - name: olist_order_items_dataset
-        description: "Dữ liệu thô từng mặt hàng trong đơn hàng, giá bán, phí vận chuyển và mã người bán"
+        identifier: bronze_order_items
+        description: "Dữ liệu thô mặt hàng đơn hàng"
         loaded_at_field: _load_timestamp
 
       - name: olist_order_payments_dataset
-        description: "Dữ liệu thô các phương thức thanh toán, số tiền và số kỳ trả góp của từng đơn hàng"
+        identifier: bronze_order_payments
+        description: "Dữ liệu thô thanh toán"
         loaded_at_field: _load_timestamp
 
       - name: olist_order_reviews_dataset
-        description: "Dữ liệu thô đánh giá của khách hàng, điểm số review và nội dung nhận xét"
+        identifier: bronze_order_reviews
+        description: "Dữ liệu thô đánh giá đơn hàng"
         loaded_at_field: _load_timestamp
 
       - name: olist_orders_dataset
-        description: "Dữ liệu thô tổng quan đơn hàng, trạng thái và các mốc thời gian xử lý đơn"
+        identifier: bronze_orders
+        description: "Dữ liệu thô đơn hàng"
         loaded_at_field: _load_timestamp
 
       - name: olist_products_dataset
-        description: "Dữ liệu thô danh mục sản phẩm, kích thước, khối lượng và tên ngành hàng"
+        identifier: bronze_products
+        description: "Dữ liệu thô sản phẩm"
         loaded_at_field: _load_timestamp
 
       - name: olist_sellers_dataset
-        description: "Dữ liệu thô người bán hàng, mã định danh và địa chỉ người bán"
+        identifier: bronze_sellers
+        description: "Dữ liệu thô người bán hàng"
+        loaded_at_field: _load_timestamp
+
+      - name: raw_sellers
+        identifier: bronze_sellers
+        description: "Alias cho bronze_sellers (dùng cho model silver_sellers)"
         loaded_at_field: _load_timestamp
 
       - name: product_category_name_translation
-        description: "Bảng tra cứu dịch tên ngành hàng từ tiếng Bồ Đào Nha sang tiếng Anh"
+        identifier: bronze_product_category_name_translation
+        description: "Bảng tra cứu dịch tên ngành hàng"
         loaded_at_field: _load_timestamp
