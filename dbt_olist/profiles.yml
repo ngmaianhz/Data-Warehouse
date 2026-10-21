@@ -5,4 +5,8 @@ dbt_olist:
       type: duckdb
       path: 'md:olist_warehouse'
       threads: 4
-      token: "{{ env_var('MOTHERDUCK_TOKEN') }}"
+      token: "{{ env_var('MOTHERDUCK_TOKEN', '') }}"
+    local:
+      type: duckdb
+      path: 'C:/Users/Admin/Data-Warehouse/data/olist_warehouse.duckdb'
+      threads: 4
