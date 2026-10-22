@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: silver_sellers
+    description: >
+      Bảng người bán hàng tầng Silver (chuẩn hóa từ olist_sellers_dataset).
+      Bảo toàn 100% số dòng so với Bronze (3,095 dòng duy nhất).
+      Mã zip_code được chuẩn hóa LPAD 5 số, tên thành phố và bang được chuẩn hóa.
+    columns:
+      - name: seller_key
+        description: "Khóa thay thế (Surrogate Key) băm từ seller_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: seller_id
+        description: "Mã định danh người bán hàng (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: seller_zip_code_prefix
+        description: "Mã bưu chính chuẩn 5 chữ số (LPAD 0)"
+        tests:
+          - not_null
+
+      - name: seller_city
+        description: "Tên thành phố đã chuẩn hóa chữ thường và bỏ dấu"
+        tests:
+          - not_null
+
+      - name: seller_state
+        description: "Mã bang 2 ký tự (UF) viết hoa"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"

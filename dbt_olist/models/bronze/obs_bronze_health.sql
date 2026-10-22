@@ -33,7 +33,7 @@ WITH ranked_runs AS (
             PARTITION BY table_name 
             ORDER BY load_timestamp DESC
         ) AS rn
-    FROM {{ source('bronze', 'olist_customers_dataset') }}.bronze_ingestion_log
+    FROM bronze_ingestion_log
     WHERE status = 'SUCCESS'
 ),
 

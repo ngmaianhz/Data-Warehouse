@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: silver_products
+    description: >
+      Bảng sản phẩm tầng Silver (chuẩn hóa từ olist_products_dataset).
+      Bảo toàn 100% số dòng so với Bronze (32,951 dòng duy nhất).
+      Đã liên kết từ điển dịch ngành hàng (silver_category_translation),
+      điền trung vị (MEDIAN) cho các thông số kích thước/cân nặng bị thiếu
+      và gắn cờ kiểm toán dữ liệu (is_missing_category, is_missing_dimensions).
+    columns:
+      - name: product_key
+        description: "Khóa thay thế (Surrogate Key) băm từ product_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_id
+        description: "Mã định danh sản phẩm (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_category_name
+        description: "Tên danh mục sản phẩm gốc (tiếng Bồ Đào Nha, có thể NULL nếu thiếu)"
+
+      - name: product_category_name_english
+        description: "Tên danh mục tiếng Anh (mặc định 'unknown' nếu không có)"
+        tests:
+          - not_null
+
+      - name: is_missing_category
+        description: "Cờ kiểm toán: TRUE nếu sản phẩm gốc bị thiếu tên danh mục"
+        tests:
+          - not_null
+
+      - name: is_missing_dimensions
+        description: "Cờ kiểm toán: TRUE nếu sản phẩm gốc bị thiếu trọng lượng hoặc kích thước"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"

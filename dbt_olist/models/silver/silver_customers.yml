@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: silver_customers
+    description: >
+      Bảng khách hàng tầng Silver (chuẩn hóa từ olist_customers_dataset).
+      Bảo toàn 100% số dòng so với Bronze (99,441 dòng duy nhất).
+      Mã zip_code được chuẩn hóa LPAD 5 số, tên thành phố và bang được chuẩn hóa.
+    columns:
+      - name: customer_key
+        description: "Khóa thay thế (Surrogate Key) băm từ customer_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: "Mã định danh khách hàng cho từng đơn đặt (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_unique_id
+        description: "Mã định danh duy nhất của cá nhân khách hàng (Unique Identifier)"
+        tests:
+          - not_null
+
+      - name: customer_zip_code_prefix
+        description: "Mã bưu chính chuẩn 5 chữ số (LPAD 0)"
+        tests:
+          - not_null
+
+      - name: customer_city
+        description: "Tên thành phố đã chuẩn hóa chữ thường và bỏ dấu"
+        tests:
+          - not_null
+
+      - name: customer_state
+        description: "Mã bang 2 ký tự (UF) viết hoa"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"

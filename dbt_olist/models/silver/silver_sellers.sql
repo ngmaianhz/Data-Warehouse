@@ -1,21 +1,40 @@
--- dbt_olist/models/silver/silver_sellers.sql
+{{
+    config(
+        materialized='table',
+        schema='silver',
+        tags=['silver', 'sellers']
+    )
+}}
 
-WITH source AS (
-    SELECT * 
-    FROM {{ source('bronze', 'raw_sellers') }}
+WITH source_data AS (
+    -- Lấy bản ghi mới nhất theo mốc nạp dữ liệu (bảo toàn 3,095 dòng, xử lý lịch sử append-only của Bronze)
+    SELECT * FROM {{ source('bronze', 'raw_sellers') }}
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY seller_id 
+        ORDER BY _load_timestamp DESC
+    ) = 1
+),
+
+cleaned_sellers AS (
+    SELECT
+        -- 0. Surrogate Key for Dimensional Performance
+        {{ dbt_utils.generate_surrogate_key(['seller_id']) }} AS seller_key,
+
+        -- 1. Natural Primary Key
+        TRIM(CAST(seller_id AS VARCHAR)) AS seller_id,
+
+        -- 2. Geographic Attributes (LPAD 5 digits & Clean text)
+        LPAD(TRIM(CAST(seller_zip_code_prefix AS VARCHAR)), 5, '0') AS seller_zip_code_prefix,
+        LOWER(TRIM(strip_accents(CAST(seller_city AS VARCHAR)))) AS seller_city,
+        UPPER(TRIM(CAST(seller_state AS VARCHAR))) AS seller_state,
+
+        -- 3. Ingestion Lineage Metadata
+        _load_timestamp,
+        _source_file,
+        _run_id
+
+    FROM source_data
+    WHERE seller_id IS NOT NULL
 )
 
-SELECT
-    CAST(seller_id AS VARCHAR) AS seller_id,
-    
-    -- Ép kiểu VARCHAR và dùng LPAD thêm số 0 đằng trước cho đủ 5 chữ số
-    LPAD(CAST(seller_zip_code_prefix AS VARCHAR), 5, '0') AS seller_zip_code_prefix,
-    
-    -- Chuẩn hóa city: trim, chuyển chữ thường (lowercase) và bỏ dấu
-    LOWER(TRIM(strip_accents(seller_city))) AS seller_city,
-    
-    -- Chuẩn hóa state: trim và viết hoa (uppercase)
-    UPPER(TRIM(seller_state)) AS seller_state
-
-FROM source
-WHERE seller_id IS NOT NULL
+SELECT * FROM cleaned_sellers
