@@ -1,8 +1,8 @@
 # BÁO CÁO NGHIỆM THU GD3.16: CHẠY DBT BUILD & ĐỐI SOÁT DỮ LIỆU TẦNG SILVER
 
 - **Dự án:** Olist E-Commerce Data Warehouse (Team 7)
-- **Môi trường thực thi:** MotherDuck Cloud (olist_warehouse)
-- **Thời gian nghiệm thu:** `2026-10-22 13:24:08`
+- **Môi trường thực thi:** DuckDB Local (C:\Users\Admin\Data-Warehouse\data\olist_warehouse.duckdb)
+- **Thời gian nghiệm thu:** `2026-10-22 23:27:31`
 - **Công cụ kiểm toán:** dbt Core (`dbt-duckdb` 1.11.0, dbt 1.12.6) + MotherDuck Cloud
 
 ---

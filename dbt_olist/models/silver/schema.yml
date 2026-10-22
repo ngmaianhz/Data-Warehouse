@@ -1,0 +1,620 @@
+version: 2
+
+# ==============================================================================
+# GD3.15 - FILE SCHEMA.YML HOÀN THIỆN TEST DATA QUALITY CHO TẦNG SILVER
+# ==============================================================================
+# Sản phẩm bàn giao GD3.15: File schema.yml hoàn thiện test cho 9 model Silver:
+#   1. silver_orders
+#   2. silver_order_items
+#   3. silver_order_payments
+#   4. silver_order_reviews
+#   5. silver_products
+#   6. silver_customers
+#   7. silver_sellers
+#   8. silver_category_translation
+#   9. silver_geolocation
+#
+# Đính chính quy chuẩn dòng (Reconciliation Rules):
+#   - 8 bảng nghiệp vụ (orders, items, payments, reviews, products, customers,
+#     sellers, translation) bảo toàn chính xác 100% số dòng so với Bronze.
+#   - Duy nhất bảng silver_geolocation giảm dòng từ 1,000,163 dòng xuống còn
+#     19,015 dòng duy nhất (~1.90% số dòng Bronze do đã gộp theo zip code prefix).
+#
+# Bộ kiểm thử chất lượng dữ liệu (Data Quality Tests):
+#   - Test PK đơn: unique, not_null trên Surrogate Keys và Natural Primary Keys
+#   - Test PK ghép: dbt_utils.unique_combination_of_columns cho (order_id, order_item_id),
+#     (review_id, order_id), (order_id, payment_sequential)
+#   - Test accepted_values: order_status, payment_type, review_score, geolocation_state
+#   - Test accepted_range / expression: giá bán, cước ship, sample size, Bounding Box
+#   - Test mốc thời gian: cảnh báo tiến trình thời gian giao nhận với severity: warn
+# ==============================================================================
+
+models:
+  # ----------------------------------------------------------------------------
+  # 1. silver_orders (Bảo toàn 100% dòng: 99,441 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_orders
+    description: >
+      Bảng đơn hàng tổng quan tầng Silver (chuẩn hóa từ olist_orders_dataset).
+      Bảo toàn 100% số dòng từ Bronze (99,441 dòng duy nhất).
+      Đã ép kiểu an toàn 5 cột mốc thời gian bằng TRY_CAST, xử lý đơn thiếu ngày giao hàng
+      và gắn cờ kiểm soát tiến trình thời gian (is_valid_chronology).
+    tests:
+      # Test mốc thời gian với mức cảnh báo severity: warn (cho các đơn vi phạm thứ tự giao nhận)
+      - dbt_utils.expression_is_true:
+          expression: "order_delivered_customer_date >= order_purchase_timestamp OR order_delivered_customer_date IS NULL"
+          config:
+            severity: warn
+
+    columns:
+      - name: order_key
+        description: "Khóa thay thế (Surrogate Key) băm từ order_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh duy nhất của đơn hàng (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: "Mã khách hàng cho từng đơn đặt hàng (Foreign Key)"
+        tests:
+          - not_null
+
+      - name: order_status
+        description: "Trạng thái đơn hàng (đã chuẩn hóa chữ thường và cắt khoảng trắng)"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'delivered'
+                - 'shipped'
+                - 'canceled'
+                - 'unavailable'
+                - 'invoiced'
+                - 'processing'
+                - 'created'
+                - 'approved'
+
+      - name: order_purchase_timestamp
+        description: "Thời điểm khách hàng bấm đặt mua (bắt buộc phải có)"
+        tests:
+          - not_null
+
+      - name: order_approved_at
+        description: "Thời điểm thanh toán được phê duyệt"
+
+      - name: order_delivered_carrier_date
+        description: "Thời điểm đơn hàng bàn giao cho vận chuyển"
+
+      - name: order_delivered_customer_date
+        description: "Thời điểm khách hàng nhận được hàng"
+
+      - name: order_estimated_delivery_date
+        description: "Thời điểm dự kiến giao hàng ban đầu"
+        tests:
+          - not_null
+
+      - name: has_cast_error
+        description: "Cờ phát hiện lỗi ép kiểu timestamp"
+        tests:
+          - not_null
+
+      - name: is_delivery_missing
+        description: "Cờ phát hiện đơn delivered nhưng thiếu ngày giao"
+        tests:
+          - not_null
+
+      - name: is_valid_chronology
+        description: "Cờ tính hợp lệ về mặt thứ tự thời gian của đơn hàng"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"
+
+  # ----------------------------------------------------------------------------
+  # 2. silver_order_items (Bảo toàn 100% dòng: 112,650 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_order_items
+    description: >
+      Bảng mặt hàng chi tiết thuộc Tầng Silver. Đã chuẩn hóa kiểu dữ liệu số học,
+      tính toán item_value và kiểm tra tính hợp lệ của đơn giá/cước ship.
+      Bảo toàn chính xác 100% số dòng so với Bronze (112,650 dòng).
+    tests:
+      # Test PK ghép: order_id + order_item_id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_id
+
+    columns:
+      - name: order_item_key
+        description: "Khóa thay thế (Surrogate Key) băm từ order_id và order_item_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh đơn hàng (phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: order_item_id
+        description: "Số thứ tự mặt hàng tuần tự trong đơn (phần 2 của PK ghép, 1..N)"
+        tests:
+          - not_null
+
+      - name: product_id
+        description: "Khóa ngoại trỏ đến sản phẩm"
+        tests:
+          - not_null
+
+      - name: seller_id
+        description: "Khóa ngoại trỏ đến người bán"
+        tests:
+          - not_null
+
+      - name: shipping_limit_date
+        description: "Mốc thời hạn người bán phải giao hàng cho bưu cục"
+        tests:
+          - not_null
+
+      - name: price
+        description: "Giá bán của một sản phẩm (DECIMAL 10,2)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: freight_value
+        description: "Cước phí vận chuyển phân bổ cho mặt hàng (DECIMAL 10,2)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: item_value
+        description: "Tổng giá trị mặt hàng (price + freight_value)"
+        tests:
+          - not_null
+
+      - name: is_valid_price
+        description: "Cờ kiểm toán: TRUE nếu price >= 0 và NOT NULL"
+        tests:
+          - not_null
+
+      - name: is_valid_freight
+        description: "Cờ kiểm toán: TRUE nếu freight_value >= 0 và NOT NULL"
+        tests:
+          - not_null
+
+      - name: is_high_freight_ratio
+        description: "Cờ cảnh báo vận hành: TRUE nếu freight_value > 2 * price và price > 0"
+        tests:
+          - not_null
+
+  # ----------------------------------------------------------------------------
+  # 3. silver_order_payments (Bảo toàn 100% dòng: 103,886 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_order_payments
+    description: >
+      Bảng thanh toán đơn hàng thuộc Tầng Silver. Chuẩn hóa phương thức thanh toán,
+      gắn cờ giao dịch bằng 0 / âm, bảo toàn chính xác 100% số dòng Bronze (103,886 dòng).
+    tests:
+      # Test PK ghép: order_id + payment_sequential
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - payment_sequential
+
+    columns:
+      - name: payment_key
+        description: "Khóa thay thế (Surrogate Key) băm từ order_id và payment_sequential"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã định danh đơn hàng (phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: payment_sequential
+        description: "Số thứ tự đợt thanh toán của đơn hàng (1..M)"
+        tests:
+          - not_null
+
+      - name: payment_type
+        description: "Phương thức thanh toán đã chuẩn hóa (credit_card, boleto, voucher, debit_card, unknown)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'unknown']
+
+      - name: payment_installments
+        description: "Số kỳ trả góp"
+        tests:
+          - not_null
+
+      - name: payment_value
+        description: "Số tiền thanh toán thực tế của đợt thanh toán (DECIMAL 10,2)"
+        tests:
+          - not_null
+
+      - name: is_zero_payment
+        description: "Cờ kiểm toán: TRUE nếu payment_value = 0.00 (voucher 100%)"
+        tests:
+          - not_null
+
+      - name: is_negative_payment
+        description: "Cờ kiểm toán: TRUE nếu payment_value < 0.00"
+        tests:
+          - not_null
+
+      - name: is_valid_payment_value
+        description: "Cờ kiểm toán kế toán: TRUE nếu payment_value >= 0.00 và NOT NULL"
+        tests:
+          - not_null
+
+      - name: is_voucher_payment
+        description: "Cờ phân tích: TRUE nếu payment_type = 'voucher'"
+        tests:
+          - not_null
+
+  # ----------------------------------------------------------------------------
+  # 4. silver_order_reviews (Bảo toàn 100% dòng: 99,224 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_order_reviews
+    description: >
+      Bảng đánh giá đơn hàng tầng Silver (chuẩn hóa từ olist_order_reviews_dataset).
+      Bảo toàn chính xác 100% số dòng so với Bronze (99,224 dòng duy nhất).
+    tests:
+      # Test PK ghép: review_id + order_id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - review_id
+            - order_id
+
+    columns:
+      - name: review_key
+        description: "Khóa thay thế (Surrogate Key) băm từ review_id và order_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: review_id
+        description: "Mã định danh đánh giá (phần 1 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: order_id
+        description: "Mã đơn hàng được đánh giá (phần 2 của PK ghép)"
+        tests:
+          - not_null
+
+      - name: review_score
+        description: "Điểm đánh giá sao từ khách hàng (INTEGER: 1 đến 5)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+
+      - name: review_comment_title
+        description: "Tiêu đề bình luận đánh giá"
+        tests:
+          - not_null
+
+      - name: review_comment_message
+        description: "Nội dung phản hồi chi tiết từ khách hàng"
+
+      - name: has_comment_message
+        description: "Cờ boolean (1: có bình luận chữ thực tế, 0: không có)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: review_creation_date
+        description: "Thời điểm hệ thống gửi phiếu khảo sát đánh giá"
+
+      - name: review_answer_timestamp
+        description: "Thời điểm khách hàng gửi câu trả lời đánh giá"
+
+      - name: _load_timestamp
+        description: "Mốc thời gian nạp dữ liệu từ Bronze"
+
+      - name: _source_file
+        description: "Tên file CSV nguồn"
+
+      - name: _run_id
+        description: "Mã lượt chạy pipeline ingestion"
+
+  # ----------------------------------------------------------------------------
+  # 5. silver_products (Bảo toàn 100% dòng: 32,951 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_products
+    description: >
+      Bảng sản phẩm tầng Silver (chuẩn hóa từ olist_products_dataset).
+      Bảo toàn chính xác 100% số dòng so với Bronze (32,951 dòng duy nhất).
+      Đã liên kết từ điển dịch ngành hàng, điền trung vị cho các thông số thiếu
+      và gắn cờ kiểm toán dữ liệu.
+    columns:
+      - name: product_key
+        description: "Khóa thay thế (Surrogate Key) băm từ product_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_id
+        description: "Mã định danh sản phẩm (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_category_name
+        description: "Tên danh mục sản phẩm gốc (tiếng Bồ Đào Nha)"
+
+      - name: product_category_name_english
+        description: "Tên danh mục tiếng Anh (mặc định 'unknown' nếu không có)"
+        tests:
+          - not_null
+
+      - name: is_missing_category
+        description: "Cờ kiểm toán: TRUE nếu sản phẩm gốc bị thiếu tên danh mục"
+        tests:
+          - not_null
+
+      - name: is_missing_dimensions
+        description: "Cờ kiểm toán: TRUE nếu sản phẩm gốc bị thiếu trọng lượng hoặc kích thước"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"
+
+  # ----------------------------------------------------------------------------
+  # 6. silver_customers (Bảo toàn 100% dòng: 99,441 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_customers
+    description: >
+      Bảng khách hàng tầng Silver (chuẩn hóa từ olist_customers_dataset).
+      Bảo toàn chính xác 100% số dòng so với Bronze (99,441 dòng duy nhất).
+      Mã zip_code được chuẩn hóa LPAD 5 số, tên thành phố và bang được chuẩn hóa.
+    columns:
+      - name: customer_key
+        description: "Khóa thay thế (Surrogate Key) băm từ customer_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: "Mã định danh khách hàng cho từng đơn đặt (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_unique_id
+        description: "Mã định danh duy nhất của cá nhân khách hàng (Unique Identifier)"
+        tests:
+          - not_null
+
+      - name: customer_zip_code_prefix
+        description: "Mã bưu chính chuẩn 5 chữ số (LPAD 0)"
+        tests:
+          - not_null
+
+      - name: customer_city
+        description: "Tên thành phố đã chuẩn hóa chữ thường và bỏ dấu"
+        tests:
+          - not_null
+
+      - name: customer_state
+        description: "Mã bang 2 ký tự (UF) viết hoa"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"
+
+  # ----------------------------------------------------------------------------
+  # 7. silver_sellers (Bảo toàn 100% dòng: 3,095 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_sellers
+    description: >
+      Bảng người bán hàng tầng Silver (chuẩn hóa từ olist_sellers_dataset).
+      Bảo toàn chính xác 100% số dòng so với Bronze (3,095 dòng duy nhất).
+      Mã zip_code được chuẩn hóa LPAD 5 số, tên thành phố và bang được chuẩn hóa.
+    columns:
+      - name: seller_key
+        description: "Khóa thay thế (Surrogate Key) băm từ seller_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: seller_id
+        description: "Mã định danh người bán hàng (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: seller_zip_code_prefix
+        description: "Mã bưu chính chuẩn 5 chữ số (LPAD 0)"
+        tests:
+          - not_null
+
+      - name: seller_city
+        description: "Tên thành phố đã chuẩn hóa chữ thường và bỏ dấu"
+        tests:
+          - not_null
+
+      - name: seller_state
+        description: "Mã bang 2 ký tự (UF) viết hoa"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"
+
+  # ----------------------------------------------------------------------------
+  # 8. silver_category_translation (Bảo toàn 100% dòng: 71 dòng)
+  # ----------------------------------------------------------------------------
+  - name: silver_category_translation
+    description: >
+      Bảng tra cứu dịch tên ngành hàng từ tiếng Bồ Đào Nha sang tiếng Anh.
+      Bảo toàn chính xác 100% số dòng so với Bronze (71 dòng duy nhất).
+    columns:
+      - name: category_key
+        description: "Khóa thay thế (Surrogate Key) băm từ product_category_name"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_category_name
+        description: "Tên danh mục gốc bằng tiếng Bồ Đào Nha (Natural Primary Key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: product_category_name_english
+        description: "Tên danh mục đã dịch sang tiếng Anh"
+        tests:
+          - not_null
+
+      - name: _load_timestamp
+        description: "Thời điểm nạp bản ghi vào kho dữ liệu"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Tên file CSV nguồn ban đầu"
+
+      - name: _run_id
+        description: "Mã UUID của phiên nạp dữ liệu Bronze"
+
+  # ----------------------------------------------------------------------------
+  # 9. silver_geolocation (Duy nhất giảm dòng: 1,000,163 -> 19,015 dòng ~1.90%)
+  # ----------------------------------------------------------------------------
+  - name: silver_geolocation
+    description: >
+      Bảng Geolocation tầng Silver chuẩn hóa và tổng hợp tọa độ không gian từ olist_geolocation_dataset.
+      Mỗi bản ghi đại diện cho một mã bưu chính duy nhất (zip code prefix 5 số, grain 1:1), 
+      được tính toán tọa độ trung tâm (centroid) bằng trung bình cộng các điểm hợp lệ trong lãnh thổ Brazil.
+      Tên thành phố và bang được chuẩn hóa và lấy theo giá trị phổ biến nhất (MODE).
+      Duy nhất bảng này giảm dòng từ 1,000,163 xuống 19,015 mã bưu chính (~1.90% dòng Bronze, đạt chuẩn).
+    columns:
+      - name: geolocation_key
+        description: "Khóa thay thế (Surrogate Key) băm từ zip_code_prefix"
+        tests:
+          - unique
+          - not_null
+
+      - name: geolocation_zip_code_prefix
+        description: "Mã bưu chính chuẩn 5 chữ số (Natural Primary Key của Dimension Geolocation)"
+        tests:
+          - unique
+          - not_null
+
+      - name: geolocation_lat
+        description: "Vĩ độ trung tâm (Centroid Latitude) trong lãnh thổ Brazil [-34.0, +6.0]"
+
+      - name: geolocation_lng
+        description: "Kinh độ trung tâm (Centroid Longitude) trong lãnh thổ Brazil [-74.0, -32.0]"
+
+      - name: geolocation_city
+        description: "Tên thành phố phổ biến nhất theo mã bưu chính"
+        tests:
+          - not_null
+
+      - name: geolocation_state
+        description: "Mã bang 2 ký tự (UF) phổ biến nhất theo mã bưu chính"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'AC'
+                - 'AL'
+                - 'AM'
+                - 'AP'
+                - 'BA'
+                - 'CE'
+                - 'DF'
+                - 'ES'
+                - 'GO'
+                - 'MA'
+                - 'MG'
+                - 'MS'
+                - 'MT'
+                - 'PA'
+                - 'PB'
+                - 'PE'
+                - 'PI'
+                - 'PR'
+                - 'RJ'
+                - 'RN'
+                - 'RO'
+                - 'RR'
+                - 'RS'
+                - 'SC'
+                - 'SE'
+                - 'SP'
+                - 'TO'
+
+      - name: valid_coordinate_points
+        description: "Số lượng tọa độ GPS hợp lệ nằm trong Bounding Box Brazil"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: coordinate_sample_size
+        description: "Tổng số lượt đo GPS thô ghi nhận cho mã bưu chính này"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 1"
+
+      - name: is_valid_coordinates
+        description: "Cờ kiểm toán: TRUE nếu có ít nhất 1 tọa độ GPS hợp lệ nằm trong Brazil"
+        tests:
+          - not_null
+
+      - name: dbt_updated_at
+        description: "Mốc thời gian xử lý và tổng hợp bản ghi tại tầng Silver"
+        tests:
+          - not_null
