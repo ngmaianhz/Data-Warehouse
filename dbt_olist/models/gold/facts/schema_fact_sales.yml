@@ -1,0 +1,133 @@
+version: 2
+
+models:
+  - name: fact_sales
+    description: >
+      Bảng sự kiện giao dịch bán hàng trung tâm (Transaction Fact Table) tại tầng Gold.
+      Grain nguyên tử: 1 dòng đại diện cho 1 mặt hàng trong 1 đơn hàng (1 order item per order).
+      Bảo toàn 100% số dòng so với silver_order_items (112,650 dòng).
+      Giải quyết bẫy Fan-Out bằng thuật toán phân bổ thanh toán Hare-Niemeyer bù lẻ cent.
+    tests:
+      # Kiểm tra khóa ghép tự nhiên duy nhất
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_id
+
+      # Kiểm tra bảo toàn số dòng 100% so với silver_order_items (112,650 dòng)
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('silver_order_items')
+
+    columns:
+      - name: sales_item_key
+        description: "Khóa thay thế (Surrogate Key) băm SHA-256 từ (order_id, order_item_id)"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã đơn hàng (Composite Natural PK & Degenerate Dimension). Khóa gom giỏ hàng và cầu nối Cross-Fact."
+        tests:
+          - not_null
+
+      - name: order_item_id
+        description: "Số thứ tự mặt hàng trong đơn hàng (Composite Natural PK: 1, 2, 3...)"
+        tests:
+          - not_null
+
+      - name: purchase_date_key
+        description: "Khóa ngày đặt hàng YYYYMMDD (Role 1 Date Key nối về dim_date.date_key)"
+        tests:
+          - not_null
+
+      - name: delivered_date_key
+        description: "Khóa ngày nhận hàng YYYYMMDD (Role 2 Date Key). Gán -1 nếu đơn chưa giao thành công."
+        tests:
+          - not_null
+
+      - name: customer_unique_id
+        description: "Định danh khách hàng duy nhất (Conformed FK nối về dim_customer.customer_unique_id)"
+        tests:
+          - not_null
+
+      - name: product_id
+        description: "Mã sản phẩm (Conformed FK nối về dim_product.product_id)"
+        tests:
+          - not_null
+
+      - name: seller_id
+        description: "Mã người bán (Conformed FK nối về dim_seller.seller_id)"
+        tests:
+          - not_null
+
+      - name: primary_payment_type_key
+        description: "Khóa kênh thanh toán chủ đạo (1=credit_card, 2=boleto, 3=voucher, 4=debit_card, 5=unknown/not_defined, -1=missing)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, -1]
+
+      - name: order_status
+        description: "Trạng thái đơn hàng (Degenerate Dimension Attribute, giữ nguyên 8 trạng thái, không lọc tại DDL)"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'delivered'
+                - 'shipped'
+                - 'canceled'
+                - 'unavailable'
+                - 'invoiced'
+                - 'processing'
+                - 'created'
+                - 'approved'
+
+      - name: shipping_state
+        description: "Mã bang giao nhận hàng thực tế tại thời điểm mua (bảo toàn lịch sử tuyến vận chuyển độc lập với SCD Type 1)"
+        tests:
+          - not_null
+
+      - name: shipping_zip_code_prefix
+        description: "Mã bưu chính 5 số nhận hàng thực tế tại thời điểm mua"
+        tests:
+          - not_null
+
+      - name: price
+        description: "Doanh thu thuần của mặt hàng theo chuẩn kế toán IFRS 15 (BRL)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "price >= 0"
+
+      - name: freight_value
+        description: "Cước phí vận chuyển phân bổ cho mặt hàng (BRL)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "freight_value >= 0"
+
+      - name: gmv
+        description: "Tổng giá trị giao dịch gộp của mặt hàng: gmv = price + freight_value"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "gmv >= 0"
+
+      - name: allocated_payment_value
+        description: "Dòng tiền thanh toán thực thu phân bổ theo tỷ trọng và bù lẻ cent bằng thuật toán Hare-Niemeyer"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "allocated_payment_value >= 0"
+
+      - name: quantity
+        description: "Số lượng mặt hàng trên từng dòng giao dịch vật lý (mặc định = 1 do mỗi dòng trong dữ liệu Olist tương ứng 1 món hàng vật lý)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "quantity = 1"
+
+      - name: dbt_created_at
+        description: "Thời điểm dbt biên dịch và tạo bản ghi vào Data Warehouse"
+        tests:
+          - not_null

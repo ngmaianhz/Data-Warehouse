@@ -1,8 +1,8 @@
 # BÁO CÁO NGHIỆM THU GD3.16: CHẠY DBT BUILD & ĐỐI SOÁT DỮ LIỆU TẦNG SILVER
 
 - **Dự án:** Olist E-Commerce Data Warehouse (Team 7)
-- **Môi trường thực thi:** DuckDB Local (C:\Users\Admin\Data-Warehouse\data\olist_warehouse.duckdb)
-- **Thời gian nghiệm thu:** `2026-10-22 23:27:31`
+- **Môi trường thực thi:** MotherDuck Cloud (olist_warehouse)
+- **Thời gian nghiệm thu:** `2026-10-23 18:15:00`
 - **Công cụ kiểm toán:** dbt Core (`dbt-duckdb` 1.11.0, dbt 1.12.6) + MotherDuck Cloud
 
 ---
@@ -22,7 +22,7 @@ Theo quy chuẩn kiến trúc Medallion Architecture và đặc thù mô hình d
 2. **Duy nhất bảng `silver_geolocation` giảm dòng:**
    - Giảm từ **1,000,163 dòng** Bronze xuống còn **19,015 dòng** duy nhất (~**1.90%** số dòng Bronze).
    - **Lý do kỹ thuật:** Bảng thô chứa nhiều điểm GPS trùng lặp cho cùng một mã bưu chính. Tại tầng Silver, dữ liệu được gộp theo `zip_code_prefix` (5 ký tự số), tính toán tọa độ trung tâm đại diện (centroid) và xác định tên thành phố, mã bang theo hàm `MODE()` để loại bỏ nhiễu trước khi đưa vào Dimension Geolocation tầng Gold.
-3. **Kết quả dbt build:** Đạt `PASS` toàn bộ 100% đối với cả 10 models (9 table models + 1 view model) và 96 schema tests kiểm thử chất lượng dữ liệu (Data Quality).
+3. **Kết quả dbt build:** Đạt `PASS` toàn bộ 100% đối với cả 10 models (9 table models + 1 view model) và 97 schema tests kiểm thử chất lượng dữ liệu (Data Quality).
 
 ---
 
@@ -31,9 +31,9 @@ Theo quy chuẩn kiến trúc Medallion Architecture và đặc thù mô hình d
 ![Ảnh Log dbt build PASS toàn bộ](GD3.16_dbt_build_pass_all.png)
 
 ```text
-06:15:55  Finished running 9 table models, 96 data tests, 1 view model in 0 hours 0 minutes and 56.95 seconds (56.95s).
+06:15:55  Finished running 9 table models, 97 data tests, 1 view model in 0 hours 0 minutes and 57.20 seconds (57.20s).
 06:15:55  Completed successfully
-06:15:56  Done. PASS=106 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=106
+06:15:56  Done. PASS=107 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=107
 ```
 
 ---
@@ -90,9 +90,9 @@ giúp tự động trích xuất bản ghi mới nhất của từng khóa chín
 
 ---
 
-## 5. Danh Mục Kiểm Thử Data Quality (96 Tests Đạt Chuẩn PASS 100%)
+## 5. Danh Mục Kiểm Thử Data Quality (97 Tests Đạt Chuẩn PASS 100%)
 
-Toàn bộ 96 kiểm thử schema của dbt đều hoàn thành xuất sắc:
+Toàn bộ 97 kiểm thử schema của dbt (quy tụ trong `schema.yml` hoàn thiện tại GD3.15) đều hoàn thành xuất sắc:
 - `unique` & `not_null` cho tất cả Surrogate Keys (`order_key`, `customer_key`, `seller_key`, `product_key`, `review_key`, `payment_key`, `order_item_key`, `geolocation_key`, `category_key`).
 - `unique` & `not_null` cho tất cả Natural Primary Keys.
 - `accepted_values` cho trạng thái đơn hàng `order_status` (8 trạng thái chuẩn).
@@ -100,13 +100,14 @@ Toàn bộ 96 kiểm thử schema của dbt đều hoàn thành xuất sắc:
 - `accepted_values` cho điểm đánh giá `review_score` (1 đến 5 sao).
 - `accepted_values` cho 27 mã bang hợp lệ của Brazil (`geolocation_state`).
 - `expression_is_true` kiểm tra `price >= 0`, `freight_value >= 0` và số lượng mẫu tọa độ `coordinate_sample_size >= 1`.
+- `expression_is_true` kiểm tra mốc thời gian giao nhận hàng hợp lý `order_delivered_customer_date >= order_purchase_timestamp OR IS NULL` với mức cảnh báo `severity: warn` theo đúng chuẩn GD3.15.
 
 ---
 
 ## 6. Kết Luận Nghiệm Thu GD3.16
 
 Giai đoạn **GD3.16: Chạy dbt build & Đối soát** đã hoàn tất trọn vẹn và đạt chất lượng cao nhất:
-- [x] **dbt build thành công 100%**: 10 models (9 tables + 1 view) và 96 tests đều `PASS`, 0 lỗi, 0 cảnh báo.
+- [x] **dbt build thành công 100%**: 10 models (9 tables + 1 view) và 97 tests đều `PASS`, 0 lỗi.
 - [x] **8 bảng nghiệp vụ bảo toàn 100.00% số dòng** đối soát Trước/Sau so với Bronze.
 - [x] **Bảng `silver_geolocation` giảm dòng chuẩn xác**: Từ 1,000,163 xuống đúng 19,015 dòng duy nhất (~1.90%).
 - [x] **Đầy đủ minh chứng trực quan**: Ảnh chụp log PASS toàn bộ (`GD3.16_dbt_build_pass_all.png`) và ảnh bảng đối soát dòng Trước/Sau (`GD3.16_doi_soat_dong_truoc_sau.png`).
