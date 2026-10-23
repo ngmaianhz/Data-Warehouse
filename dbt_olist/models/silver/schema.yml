@@ -618,3 +618,78 @@ models:
         description: "Mốc thời gian xử lý và tổng hợp bản ghi tại tầng Silver"
         tests:
           - not_null
+
+  # ----------------------------------------------------------------------------
+  # 10. obs_silver_row_audit (GD3.18 - View Kiểm toán đối soát dòng Bronze -> Silver)
+  # ----------------------------------------------------------------------------
+  - name: obs_silver_row_audit
+    description: >
+      View cổng kiểm toán chất lượng đối soát dòng giữa Bronze và Silver (GD3.18).
+      Xác minh 8 bảng nghiệp vụ đạt chính xác 100% tỷ lệ dòng, bảng geolocation đạt ngưỡng linh hoạt ~1.90%.
+      Quyết định Gate ALLOW khi tất cả 9 bảng đều PASS.
+    columns:
+      - name: entity_name
+        description: "Tên thực thể dữ liệu được kiểm toán"
+        tests:
+          - unique
+          - not_null
+
+      - name: bronze_row_count
+        description: "Số dòng Bronze thô từ đợt nạp hợp lệ gần nhất"
+        tests:
+          - not_null
+
+      - name: silver_row_count
+        description: "Số dòng Silver thực tế sau khi xử lý"
+        tests:
+          - not_null
+
+      - name: reconciliation_status
+        description: "Trạng thái đối soát dựa trên ngưỡng linh hoạt (phải đạt PASS toàn bộ)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['PASS']
+
+      - name: gate_action
+        description: "Quyết định của cổng Observability Gate (phải đạt ALLOW)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ALLOW']
+
+  # ----------------------------------------------------------------------------
+  # 11. obs_invalid_records (GD3.18 - View Tổng hợp các dòng bị gắn cờ lỗi tầng Silver)
+  # ----------------------------------------------------------------------------
+  - name: obs_invalid_records
+    description: >
+      View tổng hợp toàn bộ các bản ghi bị gắn cờ lỗi / cảnh báo chất lượng dữ liệu (DQ Flags)
+      phục vụ kiểm toán nghiệp vụ (is_delivery_missing, is_valid_chronology = FALSE, is_valid_payment = FALSE).
+    columns:
+      - name: audit_id
+        description: "Khóa kiểm toán thay thế băm từ entity_name, record_id, flag_name"
+        tests:
+          - unique
+          - not_null
+
+      - name: record_id
+        description: "Mã định danh bản ghi gốc bị gắn cờ lỗi"
+        tests:
+          - not_null
+
+      - name: flag_name
+        description: "Tên cờ kiểm toán phát hiện vi phạm"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'is_delivery_missing'
+                - 'is_valid_chronology'
+                - 'is_valid_payment'
+
+      - name: error_severity
+        description: "Mức độ nghiêm trọng của vi phạm kiểm toán"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']

@@ -80,3 +80,8 @@ sources:
         identifier: bronze_product_category_name_translation
         description: "Bảng tra cứu dịch tên ngành hàng"
         loaded_at_field: _load_timestamp
+
+      - name: bronze_ingestion_log
+        identifier: bronze_ingestion_log
+        description: "Bảng nhật ký kiểm toán nạp dữ liệu tầng Bronze"
+        loaded_at_field: load_timestamp
