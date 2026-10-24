@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: olap_scenarios
+    description: >
+      Bảng Analytical Mart tổng hợp 4 kịch bản phân tích OLAP chuyên sâu gắn với 4 phòng ban:
+      (1) BOD & Marketing (Rollup doanh thu, Delivered GMV, AOV, % GMV theo danh mục, chuẩn IFRS 15).
+      (2) Logistics & Supply Chain (Hiệu suất tuyến bang, Calendar Lead Time vs Business Days Lead Time Dias Úteis).
+      (3) Customer Service & QC (CSAT và Detractor rate có trọng số 1/k triệt tiêu fan-out).
+      (4) Finance & Revenue Assurance (PIVOT cơ cấu thanh toán theo bang, đối soát từng cent audit_penny_discrepancy = 0.00).
+    columns:
+      - name: scenario_row_key
+        description: Khóa thay thế duy nhất đại diện cho từng dòng phân tích đa chiều.
+        tests:
+          - unique
+          - not_null
+
+      - name: scenario_id
+        description: Mã định danh kịch bản phân tích.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - SCENARIO_1_BOD_MARKETING
+                  - SCENARIO_2_LOGISTICS
+                  - SCENARIO_3_CUSTOMER_SERVICE
+                  - SCENARIO_4_FINANCE
+
+      - name: department
+        description: Phòng ban nghiệp vụ thụ hưởng phân tích.
+        tests:
+          - not_null
+
+      - name: sub_scenario
+        description: Tiêu đề chi tiết của kịch bản phân tích nghiệp vụ.
+        tests:
+          - not_null
+
+      - name: dimension_1
+        description: Chiều phân tích chính cấp 1 (Năm, Bang người bán, Tên danh mục, Bang khách hàng).
+        tests:
+          - not_null
+
+      - name: dimension_2
+        description: Chiều phân tích cấp 2 (Quý-Tháng, Bang giao hàng, Loại phân tích QA, Phân bổ kênh).
+        tests:
+          - not_null
+
+      - name: dimension_3
+        description: Chiều phân tích cấp 3 (Tên danh mục, Mã tuyến đường liên bang, Ngữ cảnh cross-fact, Phương thức pivot).
+        tests:
+          - not_null
+
+      - name: metric_val_1
+        description: Số đo định lượng cấp 1 (Delivered GMV, Tổng đơn hàng, Lượt review phân bổ 1/k, Doanh số Credit Card).
+
+      - name: metric_val_2
+        description: Số đo định lượng cấp 2 (Net Revenue, Avg Calendar Lead Time, Đơn hàng phân tích, Doanh số Boleto).
+
+      - name: metric_val_3
+        description: Số đo định lượng cấp 3 (Đơn hàng duy nhất, Avg Business Lead Time Dias Uteis, Weighted CSAT, Doanh số Voucher).
+
+      - name: metric_val_4
+        description: Số đo định lượng cấp 4 (AOV, Ngày trễ cuối tuần & lễ, Promoter Count, Doanh số Debit Card).
+
+      - name: metric_val_5
+        description: Số đo định lượng cấp 5 (Tổng GMV danh mục, Tổng cước freight, Detractor Count, Tổng thanh toán state).
+
+      - name: metric_pct
+        description: Tỷ lệ phần trăm nghiệp vụ (% GMV danh mục, % Ngày trễ, % Detractor rate, % Tỷ trọng Credit Card).
+
+      - name: olap_technique
+        description: Kỹ thuật OLAP nâng cao được triển khai (ROLLUP, Window Function, Date Sequence Dias Uteis, 1/k Cross-Fact Weight, PIVOT).
+        tests:
+          - not_null
+
+      - name: audit_trail
+        description: Dấu vết kiểm toán dữ liệu (IFRS 15 Slice, Holiday/Weekend Filter, Fan-Out Elimination, Penny Discrepancy = 0.00).
+        tests:
+          - not_null
