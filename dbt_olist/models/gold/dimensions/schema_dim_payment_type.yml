@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: dim_payment_type
+    description: "Bảng chiều phương thức thanh toán (Static Dimension) chuẩn hóa 5 kênh thanh toán nghiệp vụ và 1 bản ghi giả lập -1 (GD3.25)"
+    columns:
+      - name: payment_type_key
+        description: "Khóa chính kênh thanh toán (1=credit_card, 2=boleto, 3=voucher, 4=debit_card, 5=unknown, -1=missing)"
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, -1]
+
+      - name: payment_type
+        description: "Mã định danh kỹ thuật phương thức thanh toán"
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'unknown', 'missing']
+
+      - name: payment_type_name
+        description: "Tên hiển thị phương thức thanh toán"
+        tests:
+          - not_null
+
+      - name: payment_type_name_vi
+        description: "Tên tiếng Việt của phương thức thanh toán"
+        tests:
+          - not_null
+
+      - name: payment_category
+        description: "Nhóm kênh thanh toán (Card, Cash / Bank Voucher, Voucher, Unknown, Missing)"
+        tests:
+          - not_null
+
+      - name: is_installment_eligible
+        description: "Cờ cho phép trả góp nhiều kỳ (chỉ áp dụng cho thẻ tín dụng)"
+        tests:
+          - not_null
