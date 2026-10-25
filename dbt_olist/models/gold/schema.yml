@@ -1,0 +1,414 @@
+version: 2
+
+models:
+  # ==============================================================================
+  # 1. BẢNG CHIỀU (DIMENSION TABLES)
+  # ==============================================================================
+
+  - name: dim_customer
+    description: "Bảng chiều thông tin khách hàng (Customer Dimension - SCD Type 1)"
+    columns:
+      - name: customer_unique_id
+        description: "Khóa chính duy nhất đại diện cho từng khách hàng thực"
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_product
+    description: "Bảng chiều thông tin sản phẩm chuẩn hóa song ngữ (Product Dimension)"
+    columns:
+      - name: product_id
+        description: "Khóa chính sản phẩm"
+        tests:
+          - unique
+          - not_null
+      - name: product_category_name_english
+        description: "Tên danh mục sản phẩm tiếng Anh chuẩn hóa"
+        tests:
+          - not_null
+
+  - name: dim_seller
+    description: "Bảng chiều thông tin người bán (Seller Dimension) tích hợp tọa độ địa lý đại diện"
+    columns:
+      - name: seller_id
+        description: "Khóa chính người bán (Natural Primary Key, unique 100%)"
+        tests:
+          - unique
+          - not_null
+      - name: seller_zip_code_prefix
+        description: "Mã bưu chính 5 số chuẩn hóa của người bán"
+        tests:
+          - not_null
+      - name: seller_city
+        description: "Đơn vị hành chính cấp thành phố của người bán"
+        tests:
+          - not_null
+      - name: seller_state
+        description: "Đơn vị hành chính cấp bang của người bán (2 ký tự viết hoa)"
+        tests:
+          - not_null
+
+  - name: dim_payment_type
+    description: "Bảng chiều phương thức thanh toán (Static Dimension) chuẩn hóa 5 kênh nghiệp vụ và bản ghi Sentinel (-1)"
+    columns:
+      - name: payment_type_key
+        description: "Khóa chính kênh thanh toán (1=credit_card, 2=boleto, 3=voucher, 4=debit_card, 5=unknown, -1=missing)"
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, -1]
+      - name: payment_type
+        description: "Mã định danh kỹ thuật phương thức thanh toán"
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'unknown', 'missing']
+      - name: payment_type_name
+        description: "Tên hiển thị tiếng Anh của phương thức thanh toán"
+        tests:
+          - not_null
+      - name: payment_type_name_vi
+        description: "Tên tiếng Việt của phương thức thanh toán"
+        tests:
+          - not_null
+      - name: payment_category
+        description: "Nhóm kênh thanh toán"
+        tests:
+          - not_null
+      - name: is_installment_eligible
+        description: "Cờ cho phép trả góp nhiều kỳ"
+        tests:
+          - not_null
+
+  - name: dim_date
+    description: "Bảng chiều thời gian (Date Dimension) tích hợp bản ghi Sentinel (-1) cho đơn chưa giao"
+    columns:
+      - name: date_key
+        description: "Khóa chính ngày dạng số nguyên YYYYMMDD và -1"
+        tests:
+          - unique
+          - not_null
+      - name: day_name
+        description: "Tên thứ trong tuần"
+        tests:
+          - not_null
+      - name: month_name
+        description: "Tên tháng"
+        tests:
+          - not_null
+      - name: is_weekend
+        description: "Cờ ngày cuối tuần"
+        tests:
+          - not_null
+
+  # ==============================================================================
+  # 2. BẢNG SỰ KIỆN (FACT TABLES)
+  # ==============================================================================
+
+  - name: fact_sales
+    description: >
+      Bảng sự kiện giao dịch bán hàng trung tâm (Transaction Fact Table) tại tầng Gold.
+      Grain nguyên tử: 1 dòng đại diện cho 1 mặt hàng trong 1 đơn hàng (1 order item per order).
+      Bảo toàn 100% số dòng so với silver_order_items (112,650 dòng).
+      Giải quyết bẫy Fan-Out bằng thuật toán phân bổ thanh toán Hare-Niemeyer bù lẻ cent.
+    tests:
+      # Yêu cầu 1: Khóa chính ghép tự nhiên duy nhất
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_id
+
+      # Kiểm tra bảo toàn số dòng 100% so với silver_order_items (112,650 dòng)
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('silver_order_items')
+
+    columns:
+      - name: sales_item_key
+        description: "Khóa thay thế (Surrogate Key) băm SHA-256 từ (order_id, order_item_id)"
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: "Mã đơn hàng (Composite Natural PK & Degenerate Dimension)"
+        tests:
+          - not_null
+
+      - name: order_item_id
+        description: "Số thứ tự mặt hàng trong đơn hàng (Composite Natural PK)"
+        tests:
+          - not_null
+
+      # Yêu cầu 2: Ràng buộc toàn vẹn khóa ngoại (Relationships)
+      - name: purchase_date_key
+        description: "Khóa ngày đặt hàng YYYYMMDD nối về dim_date.date_key"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: delivered_date_key
+        description: "Khóa ngày nhận hàng YYYYMMDD (bao gồm giá trị -1 cho đơn chưa giao) nối về dim_date.date_key"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: customer_unique_id
+        description: "Định danh khách hàng duy nhất (Conformed FK nối về dim_customer)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_unique_id
+
+      - name: product_id
+        description: "Mã sản phẩm (Conformed FK nối về dim_product)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: product_id
+
+      - name: seller_id
+        description: "Mã người bán (Conformed FK nối về dim_seller)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_seller')
+              field: seller_id
+
+      - name: primary_payment_type_key
+        description: "Khóa kênh thanh toán chủ đạo nối về dim_payment_type"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_payment_type')
+              field: payment_type_key
+
+      # Yêu cầu 3: Miền giá trị accepted_values cho order_status (8 trạng thái)
+      - name: order_status
+        description: "Trạng thái đơn hàng (Degenerate Dimension, giữ nguyên 8 trạng thái)"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'delivered'
+                - 'shipped'
+                - 'canceled'
+                - 'unavailable'
+                - 'invoiced'
+                - 'processing'
+                - 'created'
+                - 'approved'
+
+      - name: shipping_state
+        description: "Mã bang giao nhận hàng thực tế"
+        tests:
+          - not_null
+
+      - name: shipping_zip_code_prefix
+        description: "Mã bưu chính 5 số nhận hàng thực tế"
+        tests:
+          - not_null
+
+      - name: price
+        description: "Doanh thu thuần của mặt hàng theo chuẩn kế toán IFRS 15 (BRL)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: freight_value
+        description: "Cước phí vận chuyển phân bổ cho mặt hàng (BRL)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: gmv
+        description: "Tổng giá trị giao dịch gộp của mặt hàng: gmv = price + freight_value"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: allocated_payment_value
+        description: "Dòng tiền thực thu phân bổ theo thuật toán Hare-Niemeyer bù lẻ cent"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: quantity
+        description: "Số lượng mặt hàng trên từng dòng giao dịch vật lý (= 1)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "= 1"
+
+      - name: dbt_created_at
+        description: "Thời điểm nạp dữ liệu"
+        tests:
+          - not_null
+
+
+  - name: fact_customer_reviews
+    description: >
+      Bảng Fact đánh giá đơn hàng từ khách hàng (Customer Reviews Fact).
+      Độc lập hoàn toàn với fact_sales để triệt tiêu lỗi nhân bản lượt đánh giá (Fan-Out).
+      Grain: 1 dòng đại diện cho 1 lần khách hàng gửi phản hồi đánh giá cho 1 đơn hàng (99,224 dòng).
+    tests:
+      # Yêu cầu 1: Khóa chính ghép tự nhiên duy nhất
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - review_id
+            - order_id
+
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('silver_order_reviews')
+
+    columns:
+      - name: review_key
+        description: "Khóa thay thế (Surrogate Key) băm từ review_id và order_id"
+        tests:
+          - unique
+          - not_null
+
+      - name: review_id
+        description: "Mã định danh đánh giá"
+        tests:
+          - not_null
+
+      - name: order_id
+        description: "Mã đơn hàng làm cầu nối Cross-Fact sang fact_sales"
+        tests:
+          - not_null
+
+      # Yêu cầu 2: Ràng buộc toàn vẹn khóa ngoại (Relationships)
+      - name: review_creation_date_key
+        description: "Khóa ngoại ngày gửi phiếu khảo sát nối về dim_date"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: review_answer_date_key
+        description: "Khóa ngoại ngày khách hàng phản hồi khảo sát nối về dim_date (bao gồm cả -1)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: customer_unique_id
+        description: "Mã khách hàng duy nhất (Conformed FK kết nối sang dim_customer)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_unique_id
+
+      # Yêu cầu 3: Miền giá trị accepted_values cho review_score (1 đến 5 sao)
+      - name: review_score
+        description: "Điểm đánh giá từ 1 đến 5 sao của khách hàng"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+
+      - name: response_time_hours
+        description: "Thời gian phản hồi đánh giá tính bằng giờ"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: has_comment_title
+        description: "Cờ nhị phân (1 nếu có tiêu đề đánh giá, 0 nếu không)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: has_comment_message
+        description: "Cờ nhị phân (1 nếu có nội dung bình luận, 0 nếu không)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: dbt_created_at
+        description: "Thời điểm dbt nạp dữ liệu vào bảng Fact"
+        tests:
+          - not_null
+
+
+  # ==============================================================================
+  # 3. BẢNG PHÂN TÍCH AD-HOC & OLAP MARTS
+  # ==============================================================================
+
+  - name: olap_scenarios
+    description: >
+      Bảng Analytical Mart tổng hợp 4 kịch bản phân tích OLAP chuyên sâu gắn với 4 phòng ban:
+      (1) BOD & Marketing (Rollup doanh thu, Delivered GMV, AOV, % GMV theo danh mục, chuẩn IFRS 15).
+      (2) Logistics & Supply Chain (Hiệu suất tuyến bang, Calendar Lead Time vs Business Days Lead Time Dias Úteis).
+      (3) Customer Service & QC (CSAT và Detractor rate có trọng số 1/k triệt tiêu fan-out).
+      (4) Finance & Revenue Assurance (PIVOT cơ cấu thanh toán theo bang, đối soát từng cent audit_penny_discrepancy = 0.00).
+    columns:
+      - name: scenario_row_key
+        description: "Khóa thay thế duy nhất đại diện cho từng dòng phân tích đa chiều"
+        tests:
+          - unique
+          - not_null
+
+      - name: scenario_id
+        description: "Mã định danh kịch bản phân tích"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - SCENARIO_1_BOD_MARKETING
+                - SCENARIO_2_LOGISTICS
+                - SCENARIO_3_CUSTOMER_SERVICE
+                - SCENARIO_4_FINANCE
+
+      - name: department
+        description: "Phòng ban nghiệp vụ thụ hưởng phân tích"
+        tests:
+          - not_null
+
+      - name: sub_scenario
+        description: "Tiêu đề chi tiết của kịch bản phân tích nghiệp vụ"
+        tests:
+          - not_null
+
+      - name: dimension_1
+        description: "Chiều phân tích chính cấp 1"
+        tests:
+          - not_null
+
+      - name: dimension_2
+        description: "Chiều phân tích cấp 2"
+        tests:
+          - not_null
+
+      - name: dimension_3
+        description: "Chiều phân tích cấp 3"
+        tests:
+          - not_null
+
+      - name: olap_technique
+        description: "Kỹ thuật OLAP nâng cao được triển khai"
+        tests:
+          - not_null
+
+      - name: audit_trail
+        description: "Dấu vết kiểm toán dữ liệu"
+        tests:
+          - not_null
