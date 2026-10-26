@@ -7,11 +7,6 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT_DIR / ".env"
 
-if ENV_FILE.exists():
-    load_dotenv(ENV_FILE)
-else:
-    print(f"[!] Cảnh báo: Không tìm thấy file {ENV_FILE}")
-
 # Đảm bảo UTF-8 trên Windows console
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -19,6 +14,11 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+else:
+    print(f"[!] Cảnh báo: Không tìm thấy file {ENV_FILE}")
 
 # 2. Thực thi dbt CLI qua dbtRunner
 from dbt.cli.main import dbtRunner
