@@ -5,100 +5,305 @@ models:
   # 1. BẢNG CHIỀU (DIMENSION TABLES)
   # ==============================================================================
 
+  # ------------------------------------------------------------------------------
+  # 1.1. dim_customer
+  # ------------------------------------------------------------------------------
   - name: dim_customer
     description: "Bảng chiều thông tin khách hàng (Customer Dimension - SCD Type 1)"
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng chiều khách hàng duy nhất (Customer Dimension - SCD Type 1), lưu trữ thông tin địa lý cư trú mới nhất và thời điểm phát sinh đơn hàng đầu tiên phục vụ phân tích vòng đời khách hàng (Customer Lifecycle & Retention)."
+    contract:
+      enforced: true
     columns:
       - name: customer_unique_id
-        description: "Khóa chính duy nhất đại diện cho từng khách hàng thực"
+        data_type: varchar
+        description: "Khóa chính duy nhất đại diện cho từng khách hàng thực (UUID đã ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - unique
           - not_null
 
+      - name: latest_zip_code_prefix
+        data_type: varchar
+        description: "Mã bưu chính 5 chữ số của địa chỉ giao hàng gần nhất"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+        tests:
+          - not_null
+
+      - name: latest_city
+        data_type: varchar
+        description: "Tên thành phố cư trú theo đơn hàng gần nhất"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+        tests:
+          - not_null
+
+      - name: latest_state
+        data_type: varchar
+        description: "Mã bang cư trú (2 ký tự viết hoa) theo đơn hàng gần nhất"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+        tests:
+          - not_null
+
+      - name: latitude
+        data_type: double
+        description: "Tọa độ vĩ độ địa lý đại diện cho khách hàng (WGS84)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+
+      - name: longitude
+        data_type: double
+        description: "Tọa độ kinh độ địa lý đại diện cho khách hàng (WGS84)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+
+      - name: first_order_date
+        data_type: timestamp
+        description: "Mốc thời gian đặt đơn hàng đầu tiên của khách hàng (Cohort Date)"
+
+  # ------------------------------------------------------------------------------
+  # 1.2. dim_product
+  # ------------------------------------------------------------------------------
   - name: dim_product
     description: "Bảng chiều thông tin sản phẩm chuẩn hóa song ngữ (Product Dimension)"
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng chiều sản phẩm (Product Dimension) chuẩn hóa song ngữ Bồ Đào Nha - Anh và các thuộc tính kích thước, cân nặng phục vụ phân nhóm danh mục và tối ưu hóa vận chuyển."
+    contract:
+      enforced: true
     columns:
       - name: product_id
-        description: "Khóa chính sản phẩm"
+        data_type: varchar
+        description: "Khóa chính sản phẩm (UUID đã ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - unique
           - not_null
+
+      - name: product_category_name_portuguese
+        data_type: varchar
+        description: "Tên danh mục sản phẩm nguyên bản tiếng Bồ Đào Nha"
+        tests:
+          - not_null
+
       - name: product_category_name_english
+        data_type: varchar
         description: "Tên danh mục sản phẩm tiếng Anh chuẩn hóa"
         tests:
           - not_null
 
+      - name: product_weight_g
+        data_type: decimal(10, 2)
+        description: "Trọng lượng sản phẩm (gam)"
+
+      - name: product_length_cm
+        data_type: decimal(10, 2)
+        description: "Chiều dài sản phẩm (cm)"
+
+      - name: product_height_cm
+        data_type: decimal(10, 2)
+        description: "Chiều cao sản phẩm (cm)"
+
+      - name: product_width_cm
+        data_type: decimal(10, 2)
+        description: "Chiều rộng sản phẩm (cm)"
+
+  # ------------------------------------------------------------------------------
+  # 1.3. dim_seller
+  # ------------------------------------------------------------------------------
   - name: dim_seller
     description: "Bảng chiều thông tin người bán (Seller Dimension) tích hợp tọa độ địa lý đại diện"
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng chiều người bán (Seller Dimension) bao gồm mã định danh, địa chỉ bưu chính và tọa độ địa lý phục vụ quản lý đối tác thương mại và phân tích logistics đa vùng."
+    contract:
+      enforced: true
     columns:
       - name: seller_id
-        description: "Khóa chính người bán (Natural Primary Key, unique 100%)"
+        data_type: varchar
+        description: "Khóa chính người bán (Natural Primary Key, unique 100%, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - unique
           - not_null
+
       - name: seller_zip_code_prefix
+        data_type: varchar
         description: "Mã bưu chính 5 số chuẩn hóa của người bán"
-        tests:
-          - not_null
-      - name: seller_city
-        description: "Đơn vị hành chính cấp thành phố của người bán"
-        tests:
-          - not_null
-      - name: seller_state
-        description: "Đơn vị hành chính cấp bang của người bán (2 ký tự viết hoa)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
         tests:
           - not_null
 
+      - name: seller_city
+        data_type: varchar
+        description: "Đơn vị hành chính cấp thành phố của người bán"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+        tests:
+          - not_null
+
+      - name: seller_state
+        data_type: varchar
+        description: "Đơn vị hành chính cấp bang của người bán (2 ký tự viết hoa)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+        tests:
+          - not_null
+
+      - name: latitude
+        data_type: double
+        description: "Tọa độ vĩ độ địa lý đại diện cho người bán (WGS84)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+
+      - name: longitude
+        data_type: double
+        description: "Tọa độ kinh độ địa lý đại diện cho người bán (WGS84)"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
+
+  # ------------------------------------------------------------------------------
+  # 1.4. dim_payment_type
+  # ------------------------------------------------------------------------------
   - name: dim_payment_type
     description: "Bảng chiều phương thức thanh toán (Static Dimension) chuẩn hóa 5 kênh nghiệp vụ và bản ghi Sentinel (-1)"
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng chiều tĩnh phương thức thanh toán (Payment Method Dimension) chuẩn hóa 5 kênh thanh toán nghiệp vụ và mã sentinel (-1) phục vụ phân tích dòng tiền và đối soát tài chính."
+    contract:
+      enforced: true
     columns:
       - name: payment_type_key
+        data_type: integer
         description: "Khóa chính kênh thanh toán (1=credit_card, 2=boleto, 3=voucher, 4=debit_card, 5=unknown, -1=missing)"
         tests:
           - unique
           - not_null
           - accepted_values:
               values: [1, 2, 3, 4, 5, -1]
+
       - name: payment_type
+        data_type: varchar
         description: "Mã định danh kỹ thuật phương thức thanh toán"
         tests:
           - unique
           - not_null
           - accepted_values:
               values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'unknown', 'missing']
+
       - name: payment_type_name
+        data_type: varchar
         description: "Tên hiển thị tiếng Anh của phương thức thanh toán"
         tests:
           - not_null
+
       - name: payment_type_name_vi
+        data_type: varchar
         description: "Tên tiếng Việt của phương thức thanh toán"
         tests:
           - not_null
+
       - name: payment_category
+        data_type: varchar
         description: "Nhóm kênh thanh toán"
         tests:
           - not_null
+
       - name: is_installment_eligible
+        data_type: boolean
         description: "Cờ cho phép trả góp nhiều kỳ"
         tests:
           - not_null
 
+  # ------------------------------------------------------------------------------
+  # 1.5. dim_date
+  # ------------------------------------------------------------------------------
   - name: dim_date
     description: "Bảng chiều thời gian (Date Dimension) tích hợp bản ghi Sentinel (-1) cho đơn chưa giao"
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng chiều thời gian chuẩn hóa (Calendar Date Dimension) hỗ trợ phân tích xu hướng bán hàng đa cấp độ (Năm, Quý, Tháng, Ngày, Thứ trong tuần) và xử lý ngày sentinel (-1)."
+    contract:
+      enforced: true
     columns:
       - name: date_key
+        data_type: integer
         description: "Khóa chính ngày dạng số nguyên YYYYMMDD và -1"
         tests:
           - unique
           - not_null
+
+      - name: date_day
+        data_type: date
+        description: "Giá trị ngày theo định dạng chuẩn Date (YYYY-MM-DD)"
+
+      - name: year
+        data_type: integer
+        description: "Năm (YYYY)"
+
+      - name: quarter
+        data_type: integer
+        description: "Quý trong năm (1-4)"
+
+      - name: month
+        data_type: integer
+        description: "Tháng trong năm (1-12)"
+
+      - name: day
+        data_type: integer
+        description: "Ngày trong tháng (1-31)"
+
+      - name: day_of_week
+        data_type: integer
+        description: "Chỉ số thứ trong tuần (0=Chủ nhật, 6=Thứ bảy)"
+
       - name: day_name
+        data_type: varchar
         description: "Tên thứ trong tuần"
         tests:
           - not_null
+
       - name: month_name
+        data_type: varchar
         description: "Tên tháng"
         tests:
           - not_null
+
       - name: is_weekend
+        data_type: boolean
         description: "Cờ ngày cuối tuần"
         tests:
           - not_null
@@ -107,42 +312,55 @@ models:
   # 2. BẢNG SỰ KIỆN (FACT TABLES)
   # ==============================================================================
 
+  # ------------------------------------------------------------------------------
+  # 2.1. fact_sales
+  # ------------------------------------------------------------------------------
   - name: fact_sales
     description: >
       Bảng sự kiện giao dịch bán hàng trung tâm (Transaction Fact Table) tại tầng Gold.
       Grain nguyên tử: 1 dòng đại diện cho 1 mặt hàng trong 1 đơn hàng (1 order item per order).
       Bảo toàn 100% số dòng so với silver_order_items (112,650 dòng).
       Giải quyết bẫy Fan-Out bằng thuật toán phân bổ thanh toán Hare-Niemeyer bù lẻ cent.
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng sự kiện giao dịch bán hàng trung tâm (Sales Transaction Fact Table) tại mức hạt chi tiết từng sản phẩm trong đơn, bảo toàn 100% doanh thu theo chuẩn IFRS 15 và phân bổ thanh toán theo thuật toán Hare-Niemeyer bù lẻ cent."
+    contract:
+      enforced: true
     tests:
-      # Yêu cầu 1: Khóa chính ghép tự nhiên duy nhất
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - order_id
             - order_item_id
 
-      # Kiểm tra bảo toàn số dòng 100% so với silver_order_items (112,650 dòng)
       - dbt_utils.equal_rowcount:
           compare_model: ref('silver_order_items')
 
     columns:
       - name: sales_item_key
+        data_type: varchar
         description: "Khóa thay thế (Surrogate Key) băm SHA-256 từ (order_id, order_item_id)"
         tests:
           - unique
           - not_null
 
       - name: order_id
-        description: "Mã đơn hàng (Composite Natural PK & Degenerate Dimension)"
+        data_type: varchar
+        description: "Mã đơn hàng (Composite Natural PK & Degenerate Dimension, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
 
       - name: order_item_id
+        data_type: integer
         description: "Số thứ tự mặt hàng trong đơn hàng (Composite Natural PK)"
         tests:
           - not_null
 
-      # Yêu cầu 2: Ràng buộc toàn vẹn khóa ngoại (Relationships)
       - name: purchase_date_key
+        data_type: integer
         description: "Khóa ngày đặt hàng YYYYMMDD nối về dim_date.date_key"
         tests:
           - not_null
@@ -151,6 +369,7 @@ models:
               field: date_key
 
       - name: delivered_date_key
+        data_type: integer
         description: "Khóa ngày nhận hàng YYYYMMDD (bao gồm giá trị -1 cho đơn chưa giao) nối về dim_date.date_key"
         tests:
           - not_null
@@ -159,7 +378,12 @@ models:
               field: date_key
 
       - name: customer_unique_id
-        description: "Định danh khách hàng duy nhất (Conformed FK nối về dim_customer)"
+        data_type: varchar
+        description: "Định danh khách hàng duy nhất (Conformed FK nối về dim_customer, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
           - relationships:
@@ -167,7 +391,12 @@ models:
               field: customer_unique_id
 
       - name: product_id
-        description: "Mã sản phẩm (Conformed FK nối về dim_product)"
+        data_type: varchar
+        description: "Mã sản phẩm (Conformed FK nối về dim_product, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
           - relationships:
@@ -175,7 +404,12 @@ models:
               field: product_id
 
       - name: seller_id
-        description: "Mã người bán (Conformed FK nối về dim_seller)"
+        data_type: varchar
+        description: "Mã người bán (Conformed FK nối về dim_seller, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
           - relationships:
@@ -183,6 +417,7 @@ models:
               field: seller_id
 
       - name: primary_payment_type_key
+        data_type: integer
         description: "Khóa kênh thanh toán chủ đạo nối về dim_payment_type"
         tests:
           - not_null
@@ -190,8 +425,8 @@ models:
               to: ref('dim_payment_type')
               field: payment_type_key
 
-      # Yêu cầu 3: Miền giá trị accepted_values cho order_status (8 trạng thái)
       - name: order_status
+        data_type: varchar
         description: "Trạng thái đơn hàng (Degenerate Dimension, giữ nguyên 8 trạng thái)"
         tests:
           - not_null
@@ -207,16 +442,27 @@ models:
                 - 'approved'
 
       - name: shipping_state
+        data_type: varchar
         description: "Mã bang giao nhận hàng thực tế"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
         tests:
           - not_null
 
       - name: shipping_zip_code_prefix
+        data_type: varchar
         description: "Mã bưu chính 5 số nhận hàng thực tế"
+        meta:
+          contains_pii: true
+        tags:
+          - contains_pii
         tests:
           - not_null
 
       - name: price
+        data_type: decimal(10, 2)
         description: "Doanh thu thuần của mặt hàng theo chuẩn kế toán IFRS 15 (BRL)"
         tests:
           - not_null
@@ -224,6 +470,7 @@ models:
               expression: ">= 0"
 
       - name: freight_value
+        data_type: decimal(10, 2)
         description: "Cước phí vận chuyển phân bổ cho mặt hàng (BRL)"
         tests:
           - not_null
@@ -231,6 +478,7 @@ models:
               expression: ">= 0"
 
       - name: gmv
+        data_type: double
         description: "Tổng giá trị giao dịch gộp của mặt hàng: gmv = price + freight_value"
         tests:
           - not_null
@@ -238,6 +486,7 @@ models:
               expression: ">= 0"
 
       - name: allocated_payment_value
+        data_type: double
         description: "Dòng tiền thực thu phân bổ theo thuật toán Hare-Niemeyer bù lẻ cent"
         tests:
           - not_null
@@ -245,6 +494,7 @@ models:
               expression: ">= 0"
 
       - name: quantity
+        data_type: integer
         description: "Số lượng mặt hàng trên từng dòng giao dịch vật lý (= 1)"
         tests:
           - not_null
@@ -252,18 +502,25 @@ models:
               expression: "= 1"
 
       - name: dbt_created_at
+        data_type: timestamp
         description: "Thời điểm nạp dữ liệu"
         tests:
           - not_null
 
-
+  # ------------------------------------------------------------------------------
+  # 2.2. fact_customer_reviews
+  # ------------------------------------------------------------------------------
   - name: fact_customer_reviews
     description: >
       Bảng Fact đánh giá đơn hàng từ khách hàng (Customer Reviews Fact).
       Độc lập hoàn toàn với fact_sales để triệt tiêu lỗi nhân bản lượt đánh giá (Fan-Out).
       Grain: 1 dòng đại diện cho 1 lần khách hàng gửi phản hồi đánh giá cho 1 đơn hàng (99,224 dòng).
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng sự kiện phản hồi và đánh giá chất lượng dịch vụ từ khách hàng (Customer Review Fact Table) đo lường sự hài lòng (CSAT), thời gian phản hồi và nội dung bình luận."
+    contract:
+      enforced: true
     tests:
-      # Yêu cầu 1: Khóa chính ghép tự nhiên duy nhất
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - review_id
@@ -274,23 +531,34 @@ models:
 
     columns:
       - name: review_key
+        data_type: varchar
         description: "Khóa thay thế (Surrogate Key) băm từ review_id và order_id"
         tests:
           - unique
           - not_null
 
       - name: review_id
-        description: "Mã định danh đánh giá"
+        data_type: varchar
+        description: "Mã định danh đánh giá (UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
 
       - name: order_id
-        description: "Mã đơn hàng làm cầu nối Cross-Fact sang fact_sales"
+        data_type: varchar
+        description: "Mã đơn hàng làm cầu nối Cross-Fact sang fact_sales (UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
 
-      # Yêu cầu 2: Ràng buộc toàn vẹn khóa ngoại (Relationships)
       - name: review_creation_date_key
+        data_type: integer
         description: "Khóa ngoại ngày gửi phiếu khảo sát nối về dim_date"
         tests:
           - not_null
@@ -299,6 +567,7 @@ models:
               field: date_key
 
       - name: review_answer_date_key
+        data_type: integer
         description: "Khóa ngoại ngày khách hàng phản hồi khảo sát nối về dim_date (bao gồm cả -1)"
         tests:
           - not_null
@@ -307,15 +576,20 @@ models:
               field: date_key
 
       - name: customer_unique_id
-        description: "Mã khách hàng duy nhất (Conformed FK kết nối sang dim_customer)"
+        data_type: varchar
+        description: "Mã khách hàng duy nhất (Conformed FK kết nối sang dim_customer, UUID ẩn danh)"
+        meta:
+          pseudonymized_id: true
+        tags:
+          - pseudonymized_id
         tests:
           - not_null
           - relationships:
               to: ref('dim_customer')
               field: customer_unique_id
 
-      # Yêu cầu 3: Miền giá trị accepted_values cho review_score (1 đến 5 sao)
       - name: review_score
+        data_type: integer
         description: "Điểm đánh giá từ 1 đến 5 sao của khách hàng"
         tests:
           - not_null
@@ -323,6 +597,7 @@ models:
               values: [1, 2, 3, 4, 5]
 
       - name: response_time_hours
+        data_type: double
         description: "Thời gian phản hồi đánh giá tính bằng giờ"
         tests:
           - not_null
@@ -330,6 +605,7 @@ models:
               expression: ">= 0"
 
       - name: has_comment_title
+        data_type: integer
         description: "Cờ nhị phân (1 nếu có tiêu đề đánh giá, 0 nếu không)"
         tests:
           - not_null
@@ -337,6 +613,7 @@ models:
               values: [0, 1]
 
       - name: has_comment_message
+        data_type: integer
         description: "Cờ nhị phân (1 nếu có nội dung bình luận, 0 nếu không)"
         tests:
           - not_null
@@ -344,15 +621,18 @@ models:
               values: [0, 1]
 
       - name: dbt_created_at
+        data_type: timestamp
         description: "Thời điểm dbt nạp dữ liệu vào bảng Fact"
         tests:
           - not_null
-
 
   # ==============================================================================
   # 3. BẢNG PHÂN TÍCH AD-HOC & OLAP MARTS
   # ==============================================================================
 
+  # ------------------------------------------------------------------------------
+  # 3.1. olap_scenarios
+  # ------------------------------------------------------------------------------
   - name: olap_scenarios
     description: >
       Bảng Analytical Mart tổng hợp 4 kịch bản phân tích OLAP chuyên sâu gắn với 4 phòng ban:
@@ -360,14 +640,21 @@ models:
       (2) Logistics & Supply Chain (Hiệu suất tuyến bang, Calendar Lead Time vs Business Days Lead Time Dias Úteis).
       (3) Customer Service & QC (CSAT và Detractor rate có trọng số 1/k triệt tiêu fan-out).
       (4) Finance & Revenue Assurance (PIVOT cơ cấu thanh toán theo bang, đối soát từng cent audit_penny_discrepancy = 0.00).
+    meta:
+      owner: "@data-team"
+      business_definition: "Bảng Mart phân tích đa chiều (Analytical Data Mart) tích hợp 4 kịch bản OLAP nghiệp vụ phục vụ báo cáo quản trị cấp cao, tối ưu tuyến vận chuyển, kiểm soát chất lượng phản hồi và đối soát dòng tiền."
+    contract:
+      enforced: true
     columns:
       - name: scenario_row_key
+        data_type: varchar
         description: "Khóa thay thế duy nhất đại diện cho từng dòng phân tích đa chiều"
         tests:
           - unique
           - not_null
 
       - name: scenario_id
+        data_type: varchar
         description: "Mã định danh kịch bản phân tích"
         tests:
           - not_null
@@ -379,36 +666,73 @@ models:
                 - SCENARIO_4_FINANCE
 
       - name: department
+        data_type: varchar
         description: "Phòng ban nghiệp vụ thụ hưởng phân tích"
         tests:
           - not_null
 
       - name: sub_scenario
+        data_type: varchar
         description: "Tiêu đề chi tiết của kịch bản phân tích nghiệp vụ"
         tests:
           - not_null
 
       - name: dimension_1
+        data_type: varchar
         description: "Chiều phân tích chính cấp 1"
         tests:
           - not_null
 
       - name: dimension_2
+        data_type: varchar
         description: "Chiều phân tích cấp 2"
         tests:
           - not_null
 
       - name: dimension_3
+        data_type: varchar
         description: "Chiều phân tích cấp 3"
         tests:
           - not_null
 
+      - name: metric_val_1
+        data_type: double
+        description: "Chỉ số đo lường thứ nhất theo từng kịch bản (Delivered GMV / Total Orders / Allocated Reviews / Credit Card Value)"
+
+      - name: metric_val_2
+        data_type: double
+        description: "Chỉ số đo lường thứ hai theo từng kịch bản (Net Revenue / Avg Calendar Days / Distinct Orders / Boleto Value)"
+
+      - name: metric_val_3
+        data_type: double
+        description: "Chỉ số đo lường thứ ba theo từng kịch bản (Distinct Orders / Avg Business Days / Weighted CSAT / Voucher Value)"
+
+      - name: metric_val_4
+        data_type: double
+        description: "Chỉ số đo lường thứ tư theo từng kịch bản (AOV / Avg Delay Days / Promoter Count / Debit Card Value)"
+
+      - name: metric_val_5
+        data_type: double
+        description: "Chỉ số đo lường thứ năm theo từng kịch bản (Total Category GMV / Total Freight / Detractor Count / Total Payment Value)"
+
+      - name: metric_pct
+        data_type: double
+        description: "Chỉ số tỷ lệ phần trăm phân tích (% Category GMV / Delay % / Detractor Rate % / Credit Card Share %)"
+
       - name: olap_technique
+        data_type: varchar
         description: "Kỹ thuật OLAP nâng cao được triển khai"
         tests:
           - not_null
 
       - name: audit_trail
+        data_type: varchar
         description: "Dấu vết kiểm toán dữ liệu"
+        tests:
+          - not_null
+
+      - name: dbt_created_at
+        data_type: timestamp
+        description: "Thời điểm nạp dữ liệu vào bảng Mart"
         tests:
           - not_null

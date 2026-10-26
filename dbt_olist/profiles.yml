@@ -3,10 +3,10 @@ dbt_olist:
   outputs:
     dev:
       type: duckdb
-      path: 'md:olist_warehouse'
+      path: "{% if env_var('MOTHERDUCK_TOKEN', '') != '' %}md:olist_warehouse{% else %}d:/Data-Warehouse/data/olist_warehouse.duckdb{% endif %}"
       threads: 4
       token: "{{ env_var('MOTHERDUCK_TOKEN', '') }}"
     local:
       type: duckdb
-      path: 'C:/Users/Admin/Data-Warehouse/data/olist_warehouse.duckdb'
+      path: 'd:/Data-Warehouse/data/olist_warehouse.duckdb'
       threads: 4
