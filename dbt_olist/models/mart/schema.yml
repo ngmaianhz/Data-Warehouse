@@ -8,9 +8,7 @@ models:
     description: >
       Bảng Customer 360 tổng hợp hồ sơ đầy đủ của từng khách hàng.
       Grain: 1 dòng / customer_unique_id có ít nhất 1 đơn delivered.
-      Tích hợp thông tin địa lý, lịch sử mua hàng, CLV metrics (GD4.4),
-      chỉ số đánh giá và đặc trưng giao hàng phục vụ phân tích / máy học.
-      Phụ thuộc: fact_sales, dim_customer, fact_customer_reviews, silver_orders.
+      Khớp 100% đặc tả schema thiết kế (ERD / Mart Diagram).
     meta:
       owner: "@data-team"
       task: "GD4.2 + GD4.4"
@@ -22,164 +20,163 @@ models:
       tags: ['mart', 'customer', 'customer_360', 'gd4.2', 'gd4.4']
 
     columns:
-      # --- 0. Định danh ---
+      # --- 0. Khóa chính ---
       - name: customer_unique_id
         data_type: varchar
-        description: "Khóa chính duy nhất đại diện cho mỗi khách hàng thực (UUID ẩn danh)"
+        description: "Khóa khách hàng duy nhất (PK, UUID ẩn danh)"
         tests:
           - unique
           - not_null
 
-      # --- 1. Thông tin địa lý ---
-      - name: latest_city
-        data_type: varchar
-        description: "Thành phố theo đơn hàng gần nhất"
-
-      - name: latest_state
-        data_type: varchar
-        description: "Mã bang (2 ký tự) theo đơn hàng gần nhất"
-
-      - name: latest_zip_code_prefix
-        data_type: varchar
-        description: "Mã bưu chính 5 số theo đơn hàng gần nhất"
-
-      - name: latitude
-        data_type: double
-        description: "Tọa độ vĩ độ đại diện (WGS84)"
-
-      - name: longitude
-        data_type: double
-        description: "Tọa độ kinh độ đại diện (WGS84)"
-
-      # --- 2. Lịch sử mua hàng ---
+      # --- 1. Lịch sử mua hàng ---
       - name: first_order_date
-        data_type: timestamp
-        description: "Thời điểm đặt đơn delivered đầu tiên của khách hàng"
+        data_type: date
+        description: "Ngày mua đầu tiên của khách hàng (DATE)"
         tests:
           - not_null
 
       - name: last_order_date
-        data_type: timestamp
-        description: "Thời điểm đặt đơn delivered gần nhất"
+        data_type: date
+        description: "Ngày mua gần nhất của khách hàng (DATE)"
         tests:
           - not_null
 
-      - name: cohort_date
-        data_type: timestamp
-        description: >
-          Ngày phát sinh đơn đầu tiên trong toàn bộ lịch sử (kể cả non-delivered),
-          lấy từ dim_customer. Dùng làm cohort key trong phân tích Retention.
+      # --- 2. Thông tin địa lý mới nhất ---
+      - name: latest_city
+        data_type: varchar
+        description: "Thành phố mới nhất"
 
-      # --- 3. Chỉ số khối lượng giao dịch ---
+      - name: latest_state
+        data_type: varchar
+        description: "Bang mới nhất (2 ký tự)"
+
+      - name: latest_zip_code_prefix
+        data_type: varchar
+        description: "Mã bưu chính mới nhất"
+
+      # --- 3. Đơn hàng & Giá trị mua hàng ---
       - name: total_orders
         data_type: bigint
-        description: "Tổng số đơn hàng delivered (COUNT DISTINCT order_id)"
+        description: "Tổng số đơn hàng delivered"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 1"
 
       - name: total_gmv
-        data_type: double
-        description: >
-          Tổng GMV lịch sử từ các đơn delivered: SUM(price + freight_value).
-          Đây cũng là đại diện cho CLV lịch sử (Historical CLV = total_gmv).
+        data_type: decimal(10, 2)
+        description: "Tổng giá trị mua hàng (GMV)"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: "> 0"
 
-      - name: total_revenue
-        data_type: double
-        description: "Tổng doanh thu thuần (SUM price) từ đơn delivered"
-
-      - name: total_freight_paid
-        data_type: double
-        description: "Tổng cước vận chuyển đã trả (SUM freight_value) từ đơn delivered"
-
-      # --- 4. CLV Metrics (GD4.4) ---
       - name: aov
-        data_type: double
-        description: "Average Order Value = total_gmv / total_orders"
+        data_type: decimal(10, 2)
+        description: "Giá trị đơn hàng trung bình = total_gmv / total_orders"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 0"
 
+      # --- 4. Đánh giá ---
+      - name: avg_review_score
+        data_type: decimal(3, 2)
+        description: "Điểm đánh giá trung bình (1.00 - 5.00)"
+
+      # --- 5. Vòng đời & Tần suất ---
       - name: customer_lifespan_days
         data_type: bigint
-        description: >
-          Số ngày từ đơn delivered đầu tiên đến đơn delivered gần nhất.
-          = 0 nếu khách hàng chỉ có 1 đơn.
+        description: "Số ngày từ đơn đầu tiên đến đơn cuối cùng"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 0"
 
       - name: purchase_frequency
-        data_type: double
-        description: >
-          Tần suất mua = total_orders / customer_lifespan_days (đơn/ngày).
-          = 1.0 nếu khách hàng chỉ có 1 đơn (hoặc lifespan = 0).
+        data_type: decimal(10, 2)
+        description: "Tần suất mua hàng"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: "> 0"
 
-      # --- 5. Review metrics ---
-      - name: avg_review_score
+      # --- 6. CLV (Customer Lifetime Value) ---
+      - name: clv_historical
+        data_type: decimal(10, 2)
+        description: "CLV lịch sử = total_gmv từ các đơn delivered"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: clv_predicted
+        data_type: decimal(10, 2)
+        description: "CLV dự đoán từ mô hình học máy (nếu có)"
+
+      # --- 7. Các đặc trưng mở rộng phục vụ ML & Phân tích (GD4.4) ---
+      - name: latitude
         data_type: double
-        description: "Điểm đánh giá trung bình (1-5 sao). NULL nếu chưa có đánh giá nào."
+        description: "Vĩ độ địa lý"
+
+      - name: longitude
+        data_type: double
+        description: "Kinh độ địa lý"
+
+      - name: cohort_date
+        data_type: date
+        description: "Cohort date"
+
+      - name: total_revenue
+        data_type: decimal(10, 2)
+        description: "Tổng doanh thu sản phẩm thuần"
+
+      - name: total_freight_paid
+        data_type: decimal(10, 2)
+        description: "Tổng cước vận chuyển"
 
       - name: total_reviewed_orders
         data_type: bigint
-        description: "Số đơn hàng đã được đánh giá"
+        description: "Số đơn hàng đã đánh giá"
 
       - name: positive_review_rate
         data_type: double
-        description: "Tỷ lệ đánh giá tích cực (review_score >= 4). NULL nếu chưa có review."
+        description: "Tỷ lệ đánh giá tích cực"
 
-      # --- 6. Delivery Features (GD4.4) ---
       - name: avg_lead_time_days
         data_type: double
-        description: "Trung bình số ngày từ đặt hàng đến giao hàng thực tế"
+        description: "Thời gian giao hàng trung bình (ngày)"
 
       - name: min_lead_time_days
         data_type: bigint
-        description: "Lead time ngắn nhất (đơn nhanh nhất)"
+        description: "Thời gian giao hàng nhanh nhất (ngày)"
 
       - name: max_lead_time_days
         data_type: bigint
-        description: "Lead time dài nhất (đơn chậm nhất)"
+        description: "Thời gian giao hàng lâu nhất (ngày)"
 
       - name: on_time_delivery_rate
         data_type: double
-        description: >
-          Tỷ lệ đơn giao đúng hạn hoặc sớm hơn ngày dự kiến.
-          = orders_on_time / (orders_on_time + orders_late).
+        description: "Tỷ lệ giao hàng đúng hẹn"
 
       - name: orders_on_time
         data_type: bigint
-        description: "Số đơn giao đúng hạn hoặc sớm hơn ngày dự kiến"
+        description: "Số đơn giao đúng hẹn"
 
       - name: orders_late
         data_type: bigint
-        description: "Số đơn giao trễ hơn ngày dự kiến"
+        description: "Số đơn giao trễ"
 
       - name: avg_delivery_delay_days
         data_type: double
-        description: >
-          Trung bình số ngày chênh lệch giữa ngày giao thực tế và ngày dự kiến.
-          Dương = trễ, Âm = sớm.
+        description: "Độ trễ giao hàng trung bình (ngày)"
 
       - name: avg_freight_per_order
         data_type: double
-        description: "Cước vận chuyển trung bình mỗi đơn hàng"
+        description: "Cước phí trung bình mỗi đơn"
 
-      # --- 7. Audit ---
       - name: dbt_created_at
         data_type: timestamp
-        description: "Thời điểm dbt tạo bảng"
+        description: "Thời điểm nạp dữ liệu"
         tests:
           - not_null
-
