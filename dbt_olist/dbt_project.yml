@@ -1,4 +1,4 @@
-name: 'dbt_olist'
+﻿name: 'dbt_olist'
 version: '1.0.0'
 config-version: 2
 
@@ -26,3 +26,6 @@ models:
     gold:
       +materialized: table
       +schema: gold
+    mart:
+      +materialized: table
+      +schema: mart
