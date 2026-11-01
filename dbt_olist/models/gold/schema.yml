@@ -736,3 +736,51 @@ models:
         description: "Thời điểm nạp dữ liệu vào bảng Mart"
         tests:
           - not_null
+
+  # ==============================================================================
+  # 4. DATA OBSERVABILITY BASELINE (GD4.6)
+  # ==============================================================================
+  - name: obs_gold_health
+    description: >
+      View đối soát và kiểm toán tài chính cho tầng Gold (GD4.6).
+      Xác minh bảo toàn số dòng 112,650, doanh thu IFRS 15 khớp 0.00, cước phí khớp 0.00,
+      và dòng tiền Hare-Niemeyer khớp từng cent so với dữ liệu nguồn Silver.
+    meta:
+      owner: "@data-team"
+      task: "GD4.6"
+    config:
+      tags: ['gold', 'observability', 'audit', 'gd4.6']
+
+    columns:
+      - name: stt
+        description: "Số thứ tự kiểm toán"
+        tests:
+          - unique
+          - not_null
+
+      - name: audit_check_name
+        description: "Tên phép kiểm toán tài chính"
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values:
+                - 'fact_sales_row_count'
+                - 'net_revenue_ifrs15'
+                - 'freight_value_reconcile'
+                - 'hare_niemeyer_penny_cash'
+
+      - name: audit_status
+        description: "Trạng thái kiểm toán tài chính"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['PASS']
+
+      - name: gate_action
+        description: "Quyết định của cổng kiểm toán (phải đạt ALLOW)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ALLOW']
+

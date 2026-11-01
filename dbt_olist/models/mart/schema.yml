@@ -27,6 +27,9 @@ models:
         tests:
           - unique
           - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_unique_id
 
       # --- 1. Lịch sử mua hàng ---
       - name: first_order_date
@@ -180,3 +183,99 @@ models:
         description: "Thời điểm nạp dữ liệu"
         tests:
           - not_null
+
+      # --- 8. RFM & Phân khúc khách hàng (GD4.3 & GD4.6) ---
+      - name: recency_days
+        data_type: bigint
+        description: "Số ngày kể từ đơn mua gần nhất đến ngày kết thúc quan sát"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: r_score
+        data_type: integer
+        description: "Điểm phân vị Recency (NTILE 1-5, 5 là khách hàng mua gần nhất)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+
+      - name: f_score
+        data_type: integer
+        description: "Điểm tần suất Frequency (Thang riêng 1-3 do 97% khách hàng chỉ mua 1 đơn)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 3
+
+      - name: m_score
+        data_type: integer
+        description: "Điểm giá trị Monetary (NTILE 1-5, 5 là khách chi tiêu cao nhất)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+
+      - name: segment
+        data_type: varchar
+        description: "Nhãn phân khúc khách hàng theo ma trận điểm số RFM"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Khách hàng giá trị cao'
+                - 'Khách hàng có nguy cơ rời bỏ'
+                - 'Khách hàng mới / tiềm năng'
+                - 'Khách hàng mua thường xuyên'
+                - 'Khách hàng phổ thông'
+
+  # ==============================================================================
+  # obs_pipeline_health — GD4.6
+  # ==============================================================================
+  - name: obs_pipeline_health
+    description: >
+      View hợp nhất toàn bộ trạng thái Data Observability của kho dữ liệu Olist,
+      tổng hợp từ 4 tầng: Bronze (freshness, volume, schema drift), Silver (kiểm toán đối soát dòng, DQ flags),
+      Gold (kiểm toán doanh thu IFRS 15, cước phí, dòng tiền), và Mart (bảo toàn grain Customer 360).
+    meta:
+      owner: "@data-team"
+      task: "GD4.6"
+    config:
+      tags: ['mart', 'observability', 'pipeline_health', 'gd4.6']
+
+    columns:
+      - name: obs_id
+        description: "Mã định danh duy nhất của từng bản ghi kiểm toán"
+        tests:
+          - unique
+          - not_null
+
+      - name: pipeline_layer
+        description: "Phân tầng kho dữ liệu được kiểm toán"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BRONZE', 'SILVER', 'GOLD', 'MART']
+
+      - name: entity_or_check_name
+        description: "Tên bảng hoặc chỉ số kiểm toán cụ thể"
+        tests:
+          - not_null
+
+      - name: health_status
+        description: "Trạng thái sức khỏe kiểm toán"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['PASS', 'WARN', 'FAIL', 'OK']
+
+      - name: gate_action
+        description: "Hành động điều khiển cổng pipeline"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ALLOW', 'BLOCK']
