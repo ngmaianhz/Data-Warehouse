@@ -1,0 +1,26 @@
+version: 2
+sources:
+  - name: ml
+    schema: ml
+    description: "Kết quả phân cụm K-Means do notebooks/04_ml_clustering.ipynb ghi ra (không do dbt build)."
+    tables:
+      - name: customer_cluster
+        columns:
+          - name: customer_unique_id
+            tests:
+              - unique
+              - not_null
+              - relationships:
+                  to: ref('mart_customer_360')
+                  field: customer_unique_id
+          - name: cluster_id
+            tests: [not_null]
+      - name: cluster_profile
+        columns:
+          - name: cluster_id
+            tests: [unique, not_null]
+      - name: kmeans_model_selection
+        columns:
+          - name: k
+            tests: [unique, not_null]
+

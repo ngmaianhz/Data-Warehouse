@@ -60,6 +60,18 @@ cleaned_payments AS (
             ELSE FALSE 
         END AS is_voucher_payment,
 
+        -- Cờ kiểm toán is_valid_payment chuẩn hóa theo Báo cáo GD3.18 & Traceability Matrix (Bảng 3.5.6)
+        -- Gán FALSE cho 3 dòng chứa phương thức thanh toán bất thường (not_defined) hoặc số tiền âm
+        CASE 
+            WHEN LOWER(TRIM(CAST(payment_type AS VARCHAR))) = 'not_defined'
+              OR payment_type IS NULL 
+              OR TRIM(CAST(payment_type AS VARCHAR)) = ''
+              OR TRY_CAST(payment_value AS DECIMAL(10, 2)) < 0.00 
+              OR TRY_CAST(payment_value AS DECIMAL(10, 2)) IS NULL 
+            THEN FALSE 
+            ELSE TRUE 
+        END AS is_valid_payment,
+
         -- 6. Ingestion Lineage Metadata
         _load_timestamp,
         _source_file,

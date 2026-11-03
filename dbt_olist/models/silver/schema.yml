@@ -273,6 +273,11 @@ models:
         tests:
           - not_null
 
+      - name: is_valid_payment
+        description: "Cờ kiểm toán chất lượng: FALSE cho phương thức thanh toán bất thường (not_defined) hoặc giá trị âm"
+        tests:
+          - not_null
+
   # ----------------------------------------------------------------------------
   # 4. silver_order_reviews (Bảo toàn 100% dòng: 99,224 dòng)
   # ----------------------------------------------------------------------------
@@ -364,7 +369,9 @@ models:
           - not_null
 
       - name: product_category_name
-        description: "Tên danh mục sản phẩm gốc (tiếng Bồ Đào Nha)"
+        description: "Tên danh mục sản phẩm gốc (tiếng Bồ Đào Nha, đã chuẩn hóa và gán 'unknown' nếu khuyết)"
+        tests:
+          - not_null
 
       - name: product_category_name_english
         description: "Tên danh mục tiếng Anh (mặc định 'unknown' nếu không có)"

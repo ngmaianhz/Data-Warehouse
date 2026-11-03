@@ -70,9 +70,7 @@ invalid_payments AS (
         _load_timestamp,
         _run_id
     FROM {{ ref('silver_order_payments') }}
-    WHERE is_valid_payment_value = FALSE 
-       OR payment_type = 'unknown' 
-       OR is_negative_payment = TRUE
+    WHERE is_valid_payment = FALSE
 ),
 
 unified_invalid_records AS (

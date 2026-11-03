@@ -28,8 +28,8 @@ joined_products AS (
         -- 1. Natural Primary Key
         TRIM(CAST(p.product_id AS VARCHAR)) AS product_id,
 
-        -- 2. Product Category Attributes & Translation
-        LOWER(TRIM(CAST(p.product_category_name AS VARCHAR))) AS product_category_name,
+        -- 2. Product Category Attributes & Translation (Gán 'unknown' cho danh mục khuyết theo đặc tả Báo cáo)
+        COALESCE(LOWER(TRIM(CAST(p.product_category_name AS VARCHAR))), 'unknown') AS product_category_name,
         COALESCE(t.product_category_name_english, 'unknown') AS product_category_name_english,
 
         -- 3. Descriptive Measures (Sửa lỗi chính tả lenght -> length)

@@ -12,6 +12,7 @@ models:
     meta:
       owner: "@data-team"
       task: "GD4.2 + GD4.4"
+      design_exception: "Đọc silver_orders cho delivery features do fact_sales chưa có order_estimated_delivery_date"
       business_definition: >
         Bảng phẳng Customer 360 tập trung toàn bộ đặc trưng của khách hàng
         tại mức hạt customer_unique_id, phục vụ phân tích CLV, phân cụm K-Means
@@ -96,26 +97,14 @@ models:
           - dbt_utils.expression_is_true:
               expression: ">= 0"
 
-      - name: purchase_frequency
-        data_type: decimal(10, 2)
-        description: "Tần suất mua hàng"
-        tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              expression: "> 0"
-
       # --- 6. CLV (Customer Lifetime Value) ---
       - name: clv_historical
         data_type: decimal(10, 2)
-        description: "CLV lịch sử = total_gmv từ các đơn delivered"
+        description: "CLV lịch sử = tổng GMV các đơn delivered. Không phải CLV dự báo."
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: "> 0"
-
-      - name: clv_predicted
-        data_type: decimal(10, 2)
-        description: "CLV dự đoán từ mô hình học máy (nếu có)"
 
       # --- 7. Các đặc trưng mở rộng phục vụ ML & Phân tích (GD4.4) ---
       - name: latitude
@@ -193,9 +182,24 @@ models:
           - dbt_utils.expression_is_true:
               expression: ">= 0"
 
+      - name: snapshot_date
+        data_type: date
+        description: "Mốc ngày kết thúc quan sát toàn hệ thống dùng để tính recency_days"
+        tests:
+          - not_null
+
+      - name: is_repeat_customer
+        data_type: integer
+        description: "Cờ nhị phân xác định khách hàng mua lặp lại (1 nếu total_orders > 1, 0 nếu chỉ mua 1 đơn)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+              quote: false
+
       - name: r_score
         data_type: integer
-        description: "Điểm phân vị Recency (NTILE 1-5, 5 là khách hàng mua gần nhất)"
+        description: "Điểm phân vị Recency 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = mua gần nhất"
         tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -213,7 +217,7 @@ models:
 
       - name: m_score
         data_type: integer
-        description: "Điểm giá trị Monetary (NTILE 1-5, 5 là khách chi tiêu cao nhất)"
+        description: "Điểm phân vị Monetary 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = chi tiêu cao nhất"
         tests:
           - not_null
           - dbt_utils.accepted_range:

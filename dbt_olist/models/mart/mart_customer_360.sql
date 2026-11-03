@@ -12,6 +12,7 @@
 -- Grain     : 1 dòng / customer_unique_id có ít nhất 1 đơn delivered
 -- Phụ thuộc : gold.fact_sales, gold.dim_customer, gold.fact_customer_reviews, silver_orders
 -- Scope     : Chỉ tính các đơn order_status = 'delivered'
+-- Ngoại lệ thiết kế: đọc silver_orders để lấy ngày giao thực tế/dự kiến vì fact_sales chưa lưu các mốc này (xem báo cáo GD4.8).
 -- ==============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -130,22 +131,6 @@ customer_metrics AS (
             ELSE 0
         END AS customer_lifespan_days,
 
-        -- Tần suất mua hàng (DECIMAL(10, 2))
-        CAST(
-            CASE
-                WHEN COUNT(DISTINCT order_id) <= 1
-                    OR date_diff('day', MIN(order_purchase_timestamp), MAX(order_purchase_timestamp)) = 0
-                THEN 1.00
-                ELSE GREATEST(
-                    ROUND(
-                        CAST(COUNT(DISTINCT order_id) AS DOUBLE) 
-                        / date_diff('day', MIN(order_purchase_timestamp), MAX(order_purchase_timestamp)),
-                    2),
-                    0.01
-                )
-            END
-        AS DECIMAL(10, 2)) AS purchase_frequency,
-
         -- Delivery features (GD4.4)
         ROUND(AVG(actual_lead_time_days), 2)    AS avg_lead_time_days,
         MIN(actual_lead_time_days)              AS min_lead_time_days,
@@ -184,19 +169,21 @@ customer_with_profile AS (
 ),
 
 -- ---------------------------------------------------------------------------
--- 6. Join với fact_customer_reviews tính review score
+-- 6. Join với fact_customer_reviews tính review score (chỉ trên đơn delivered)
 -- ---------------------------------------------------------------------------
 order_reviews_agg AS (
     SELECT
-        customer_unique_id,
-        CAST(ROUND(AVG(review_score), 2) AS DECIMAL(3, 2)) AS avg_review_score,
-        COUNT(DISTINCT order_id)                           AS total_reviewed_orders,
+        r.customer_unique_id,
+        CAST(ROUND(AVG(r.review_score), 2) AS DECIMAL(3, 2)) AS avg_review_score,
+        COUNT(DISTINCT r.order_id)                           AS total_reviewed_orders,
         ROUND(
-            CAST(SUM(CASE WHEN review_score >= 4 THEN 1 ELSE 0 END) AS DOUBLE)
+            CAST(SUM(CASE WHEN r.review_score >= 4 THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(COUNT(*), 0),
         4) AS positive_review_rate
-    FROM {{ ref('fact_customer_reviews') }}
-    GROUP BY customer_unique_id
+    FROM {{ ref('fact_customer_reviews') }} r
+    JOIN (SELECT DISTINCT order_id FROM delivered_orders) d
+        ON r.order_id = d.order_id
+    GROUP BY r.customer_unique_id
 ),
 
 -- ---------------------------------------------------------------------------
@@ -205,26 +192,30 @@ order_reviews_agg AS (
 customer_rfm_base AS (
     SELECT
         p.*,
-        -- Recency: Số ngày từ đơn cuối đến ngày mua gần nhất trong toàn hệ thống
+        MAX(p.last_order_date) OVER () AS snapshot_date,
+        -- Recency: Số ngày từ đơn cuối đến ngày mua gần nhất trong toàn hệ thống (snapshot_date)
         date_diff(
             'day', 
             p.last_order_date, 
             MAX(p.last_order_date) OVER ()
-        ) AS recency_days
+        ) AS recency_days,
+        -- Cờ khách hàng lặp lại (mua nhiều hơn 1 đơn)
+        CASE 
+            WHEN p.total_orders > 1 THEN 1 
+            ELSE 0 
+        END AS is_repeat_customer
     FROM customer_with_profile p
 ),
 
 -- ---------------------------------------------------------------------------
--- 8. Phân vị NTILE cho RFM Scores (GD4.3 & GD4.6)
+-- 8. Phân vị PERCENT_RANK cho RFM Scores (kết quả tất định, đồng hạng cùng điểm)
 -- ---------------------------------------------------------------------------
 customer_rfm_scores AS (
     SELECT
         b.*,
-        -- r_score: NTILE 1-5 (người mua gần nhất recency_days nhỏ nhất -> score 5)
+        -- Điểm phân vị Recency 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = mua gần nhất
         CAST(
-            NTILE(5) OVER (
-                ORDER BY b.recency_days DESC
-            ) 
+            LEAST(5, 1 + FLOOR(PERCENT_RANK() OVER (ORDER BY b.recency_days DESC) * 5))
         AS INTEGER) AS r_score,
 
         -- f_score: Thang 1-3 (do đặc thù 97% khách hàng Olist chỉ mua 1 đơn)
@@ -236,11 +227,9 @@ customer_rfm_scores AS (
             END
         AS INTEGER) AS f_score,
 
-        -- m_score: NTILE 1-5 (chi tiêu nhiều nhất total_gmv cao nhất -> score 5)
+        -- Điểm phân vị Monetary 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = chi tiêu cao nhất
         CAST(
-            NTILE(5) OVER (
-                ORDER BY b.total_gmv ASC
-            )
+            LEAST(5, 1 + FLOOR(PERCENT_RANK() OVER (ORDER BY b.total_gmv ASC) * 5))
         AS INTEGER) AS m_score
 
     FROM customer_rfm_base b
@@ -268,7 +257,7 @@ customer_segmented AS (
 )
 
 -- ---------------------------------------------------------------------------
--- 9. Final SELECT - Bảng Customer 360 tích hợp RFM & Observability (GD4.6)
+-- 10. Final SELECT - Bảng Customer 360 tích hợp RFM & Observability
 -- ---------------------------------------------------------------------------
 SELECT
     -- [PK] Khóa khách hàng
@@ -291,12 +280,13 @@ SELECT
     -- [Đánh giá]
     r.avg_review_score,
 
-    -- [Vòng đời & Tần suất]
+    -- [Vòng đời]
     c.customer_lifespan_days,
-    c.purchase_frequency,
 
     -- [RFM & Phân khúc khách hàng - GD4.3 & GD4.6]
     c.recency_days,
+    c.snapshot_date,
+    c.is_repeat_customer,
     c.r_score,
     c.f_score,
     c.m_score,
@@ -304,7 +294,6 @@ SELECT
 
     -- [CLV]
     c.total_gmv                                                 AS clv_historical,
-    CAST(NULL AS DECIMAL(10, 2))                                AS clv_predicted,
 
     -- [Bổ sung phục vụ ML/Phân tích mở rộng - GD4.4]
     c.latitude,
