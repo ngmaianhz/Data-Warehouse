@@ -283,3 +283,101 @@ models:
           - not_null
           - accepted_values:
               values: ['ALLOW', 'BLOCK']
+
+  # ==============================================================================
+  # dim_customer_cluster — GD4.12
+  # ==============================================================================
+  - name: dim_customer_cluster
+    description: >
+      Bảng chiều phân cụm khách hàng (Customer Cluster Dimension) tại tầng Data Mart.
+      Grain: 1 dòng / cluster_id (1 dòng đại diện cho 1 cụm phân khúc khách hàng).
+      Đặc tả theo thiết kế [DW] GD4.1 Customer Data Mart Design và hình thành từ mô hình K-Means (K=3).
+    meta:
+      owner: "@data-team"
+      task: "GD4.12"
+      business_definition: >
+        Bảng chiều quản lý danh mục và chân dung các cụm phân khúc khách hàng theo thuật toán K-Means,
+        bao gồm nhãn phân cụm (cluster_label), mô tả chi tiết đặc điểm hành vi và các chỉ số định lượng
+        (Recency, Monetary, CSAT, Delivery Lead Time, Late Order Rate).
+    config:
+      tags: ['mart', 'customer', 'customer_cluster', 'gd4.12']
+
+    columns:
+      - name: cluster_id
+        data_type: integer
+        description: "Mã định danh cụm khách hàng (PK: 1, 2, 3 và -1 cho Sentinel)"
+        tests:
+          - unique
+          - not_null
+
+      - name: cluster_label
+        data_type: varchar
+        description: "Nhãn mô tả cụm khách hàng (ví dụ: High Value / C1 · Lâu rồi · Chi cao · Không hài lòng)"
+        tests:
+          - unique
+          - not_null
+
+      - name: cluster_description
+        data_type: varchar
+        description: "Mô tả chi tiết chân dung và đặc điểm hành vi của cụm khách hàng"
+        tests:
+          - not_null
+
+      - name: n_customers
+        data_type: integer
+        description: "Số lượng khách hàng thuộc cụm"
+        tests:
+          - not_null
+
+      - name: pct_customers
+        data_type: decimal(5, 2)
+        description: "Tỷ lệ phần trăm khách hàng trong cụm so với toàn bộ tệp khách hàng"
+        tests:
+          - not_null
+
+      - name: sum_gmv
+        data_type: decimal(12, 2)
+        description: "Tổng giá trị GMV mà cụm đóng góp (BRL)"
+        tests:
+          - not_null
+
+      - name: pct_gmv
+        data_type: decimal(5, 2)
+        description: "Tỷ trọng phần trăm GMV của cụm trên toàn bộ doanh thu sàn"
+        tests:
+          - not_null
+
+      - name: median_recency_days
+        data_type: double
+        description: "Trung vị số ngày kể từ lần mua hàng gần nhất của cụm"
+
+      - name: median_total_gmv
+        data_type: decimal(10, 2)
+        description: "Trung vị giá trị GMV của khách hàng trong cụm (BRL)"
+
+      - name: mean_total_gmv
+        data_type: double
+        description: "Giá trị GMV trung bình của khách hàng trong cụm (BRL)"
+
+      - name: avg_review_score
+        data_type: double
+        description: "Điểm đánh giá trải nghiệm dịch vụ trung bình của cụm (1.00 - 5.00 sao)"
+
+      - name: median_lead_time_days
+        data_type: double
+        description: "Thời gian giao hàng trung vị của cụm (ngày)"
+
+      - name: late_order_rate
+        data_type: double
+        description: "Tỷ lệ đơn hàng bị giao trễ hạn so với ngày ước tính của cụm"
+
+      - name: top_state
+        data_type: varchar
+        description: "Bang có số lượng khách hàng tập trung đông nhất trong cụm"
+
+      - name: dbt_created_at
+        data_type: timestamp
+        description: "Thời điểm bản ghi được tạo ra trong Data Mart"
+        tests:
+          - not_null
+
