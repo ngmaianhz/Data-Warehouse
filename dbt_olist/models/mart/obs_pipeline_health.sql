@@ -14,7 +14,7 @@
 --   2. SILVER LAYER : obs_silver_row_audit (Đối soát dòng ngưỡng linh hoạt - 9 model Silver)
 --                     obs_invalid_records (Tổng hợp các bản ghi gắn cờ vi phạm DQ)
 --   3. GOLD LAYER   : obs_gold_health (Kiểm toán tài chính IFRS 15, cước phí, dòng tiền)
---   4. MART LAYER   : mart_customer_360 (Kiểm tra bảo toàn grain khách hàng & RFM)
+--   4. MART LAYER   : mart_customer_360 (Kiểm tra bảo toàn grain khách hàng)
 --
 -- NGUYÊN TẮC: Đọc lại các view obs_* sẵn có, hợp nhất trạng thái mà không viết lại từ đầu.
 -- ==============================================================================
@@ -98,7 +98,7 @@ mart_health AS (
             THEN 'ALLOW' 
             ELSE 'BLOCK' 
         END                                                             AS gate_action,
-        'Hồ sơ Customer 360 bảo toàn grain 1 dòng/khách (' || CAST(COUNT(*) AS VARCHAR) || ' khách hàng delivered) kèm phân khúc RFM' AS audit_details,
+        'Hồ sơ Customer 360 bảo toàn grain 1 dòng/khách (' || CAST(COUNT(*) AS VARCHAR) || ' khách hàng delivered)' AS audit_details,
         CURRENT_TIMESTAMP                                               AS checked_at
     FROM {{ ref('mart_customer_360') }}
 ),

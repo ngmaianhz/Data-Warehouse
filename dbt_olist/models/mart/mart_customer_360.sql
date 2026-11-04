@@ -12,6 +12,7 @@
 -- Grain     : 1 dòng / customer_unique_id có ít nhất 1 đơn delivered
 -- Phụ thuộc : gold.fact_sales, gold.dim_customer, gold.fact_customer_reviews, silver_orders
 -- Scope     : Chỉ tính các đơn order_status = 'delivered'
+-- RFM (recency, frequency, monetary, r/f/m_score, segment) và cụm K-Means nằm ở mart_customer_rfm (theo ERD GD4.1).
 -- Ngoại lệ thiết kế: đọc silver_orders để lấy ngày giao thực tế/dự kiến vì fact_sales chưa lưu các mốc này (xem báo cáo GD4.8).
 -- ==============================================================================
 
@@ -184,80 +185,10 @@ order_reviews_agg AS (
     JOIN (SELECT DISTINCT order_id FROM delivered_orders) d
         ON r.order_id = d.order_id
     GROUP BY r.customer_unique_id
-),
-
--- ---------------------------------------------------------------------------
--- 7. Tính toán đặc trưng RFM cơ sở (GD4.3 & GD4.6)
--- ---------------------------------------------------------------------------
-customer_rfm_base AS (
-    SELECT
-        p.*,
-        MAX(p.last_order_date) OVER () AS snapshot_date,
-        -- Recency: Số ngày từ đơn cuối đến ngày mua gần nhất trong toàn hệ thống (snapshot_date)
-        date_diff(
-            'day', 
-            p.last_order_date, 
-            MAX(p.last_order_date) OVER ()
-        ) AS recency_days,
-        -- Cờ khách hàng lặp lại (mua nhiều hơn 1 đơn)
-        CASE 
-            WHEN p.total_orders > 1 THEN 1 
-            ELSE 0 
-        END AS is_repeat_customer
-    FROM customer_with_profile p
-),
-
--- ---------------------------------------------------------------------------
--- 8. Phân vị PERCENT_RANK cho RFM Scores (kết quả tất định, đồng hạng cùng điểm)
--- ---------------------------------------------------------------------------
-customer_rfm_scores AS (
-    SELECT
-        b.*,
-        -- Điểm phân vị Recency 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = mua gần nhất
-        CAST(
-            LEAST(5, 1 + FLOOR(PERCENT_RANK() OVER (ORDER BY b.recency_days DESC) * 5))
-        AS INTEGER) AS r_score,
-
-        -- f_score: Thang 1-3 (do đặc thù 97% khách hàng Olist chỉ mua 1 đơn)
-        CAST(
-            CASE 
-                WHEN b.total_orders = 1 THEN 1
-                WHEN b.total_orders = 2 THEN 2
-                ELSE 3
-            END
-        AS INTEGER) AS f_score,
-
-        -- Điểm phân vị Monetary 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = chi tiêu cao nhất
-        CAST(
-            LEAST(5, 1 + FLOOR(PERCENT_RANK() OVER (ORDER BY b.total_gmv ASC) * 5))
-        AS INTEGER) AS m_score
-
-    FROM customer_rfm_base b
-),
-
--- ---------------------------------------------------------------------------
--- 9. Gán nhãn phân khúc khách hàng (Segment Label)
--- ---------------------------------------------------------------------------
-customer_segmented AS (
-    SELECT
-        s.*,
-        CASE
-            -- Khách hàng giá trị cao: Mua gần đây (R >= 4) và chi tiêu lớn (M >= 4)
-            WHEN s.r_score >= 4 AND s.m_score >= 4 THEN 'Khách hàng giá trị cao'
-            -- Khách hàng mua thường xuyên: Mua nhiều đơn (F >= 2) và còn hoạt động (R >= 3)
-            WHEN s.f_score >= 2 AND s.r_score >= 3 THEN 'Khách hàng mua thường xuyên'
-            -- Khách hàng mới / tiềm năng: Mua gần đây (R >= 4) nhưng chi tiêu vừa/nhỏ (M <= 3)
-            WHEN s.r_score >= 4 AND s.m_score <= 3 THEN 'Khách hàng mới / tiềm năng'
-            -- Khách hàng có nguy cơ rời bỏ: Đã lâu không mua (R <= 2) nhưng từng mua nhiều/chi nhiều (M >= 4 OR F >= 2)
-            WHEN s.r_score <= 2 AND (s.m_score >= 4 OR s.f_score >= 2) THEN 'Khách hàng có nguy cơ rời bỏ'
-            -- Khách hàng phổ thông: Các nhóm còn lại
-            ELSE 'Khách hàng phổ thông'
-        END AS segment
-    FROM customer_rfm_scores s
 )
 
 -- ---------------------------------------------------------------------------
--- 10. Final SELECT - Bảng Customer 360 tích hợp RFM & Observability
+-- 7. Final SELECT - Bảng Customer 360 (hồ sơ, giá trị, đánh giá, giao hàng)
 -- ---------------------------------------------------------------------------
 SELECT
     -- [PK] Khóa khách hàng
@@ -283,15 +214,6 @@ SELECT
     -- [Vòng đời]
     c.customer_lifespan_days,
 
-    -- [RFM & Phân khúc khách hàng - GD4.3 & GD4.6]
-    c.recency_days,
-    c.snapshot_date,
-    c.is_repeat_customer,
-    c.r_score,
-    c.f_score,
-    c.m_score,
-    c.segment,
-
     -- [CLV]
     c.total_gmv                                                 AS clv_historical,
 
@@ -315,6 +237,6 @@ SELECT
     -- Audit
     CURRENT_TIMESTAMP                                           AS dbt_created_at
 
-FROM customer_segmented c
+FROM customer_with_profile c
 LEFT JOIN order_reviews_agg r
     ON c.customer_unique_id = r.customer_unique_id

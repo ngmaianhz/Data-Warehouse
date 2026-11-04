@@ -7,106 +7,62 @@
 }}
 
 -- ==============================================================================
--- GD4.12 - XÂY DỰNG BẢNG CHIỀU PHÂN CỤM KHÁCH HÀNG (dim_customer_cluster)
+-- GD4.12 - BẢNG CHIỀU PHÂN CỤM KHÁCH HÀNG (dim_customer_cluster)
 -- ==============================================================================
--- Căn cứ thiết kế: [DW] GD4.1 Customer Data Mart Design (Mục 3.2 & Sơ đồ Data Mart)
--- Nguồn dữ liệu: Kết quả phân cụm K-Means tối ưu (K=3) từ notebooks/04_ml_clustering.ipynb
--- Grain: 1 dòng / cluster_id (1 dòng đại diện cho 1 cụm phân khúc khách hàng)
--- Khóa chính: cluster_id (INTEGER)
+-- Grain      : 1 dòng / cluster_id
+-- Khóa chính : cluster_id (INTEGER); -1 = khách chưa có kết quả phân cụm
+-- Nguồn      : source ml.cluster_profile, do notebooks/04_ml_clustering.ipynb ghi ra
+--              (K-Means trên recency_days, frequency, monetary của mart_customer_rfm).
+--              Nhãn và mô tả cụm do notebook sinh theo luật từ chân dung cụm, không gõ tay,
+--              nên bảng luôn khớp với lần chạy mô hình gần nhất.
 -- ==============================================================================
 
-WITH cluster_definitions AS (
-    -- Cụm 1: Khách hàng chi tiêu cao, không hài lòng / Nguy cơ rời bỏ do vận chuyển
+WITH profile AS (
     SELECT
-        1 AS cluster_id,
-        'C1 · Lâu rồi · Chi cao · Không hài lòng' AS cluster_label,
-        'Khách hàng chi tiêu cao (median GMV 125.87 BRL, mean 197.62 BRL), đã lâu không mua hàng (median Recency 218 ngày), đánh giá trải nghiệm dịch vụ rất thấp (review TB 1.94 sao) do thời gian giao hàng dài (median 21 ngày) và tỷ lệ đơn trễ hạn cao (38.65%). Chiếm 16.63% tổng số khách hàng và đóng góp 19.89% tổng GMV toàn sàn.' AS cluster_description,
-        15523 AS n_customers,
-        16.63 AS pct_customers,
-        3067611.60 AS sum_gmv,
-        19.89 AS pct_gmv,
-        218.0 AS median_recency_days,
-        125.87 AS median_total_gmv,
-        197.62 AS mean_total_gmv,
-        1.94 AS avg_review_score,
-        21.0 AS median_lead_time_days,
-        0.3865 AS late_order_rate,
-        'SP' AS top_state
+        CAST(cluster_id AS INTEGER)               AS cluster_id,
+        CAST(cluster_label AS VARCHAR)            AS cluster_label,
+        CAST(cluster_description AS VARCHAR)      AS cluster_description,
+        CAST(n_customers AS INTEGER)              AS n_customers,
+        CAST(pct_customers AS DECIMAL(5, 2))      AS pct_customers,
+        CAST(sum_monetary AS DECIMAL(12, 2))      AS sum_monetary,
+        CAST(pct_monetary AS DECIMAL(5, 2))       AS pct_monetary,
+        CAST(median_recency_days AS DOUBLE)       AS median_recency_days,
+        CAST(mean_frequency AS DOUBLE)            AS mean_frequency,
+        CAST(repeat_rate AS DOUBLE)               AS repeat_rate,
+        CAST(median_monetary AS DECIMAL(10, 2))   AS median_monetary,
+        CAST(mean_monetary AS DOUBLE)             AS mean_monetary,
+        CAST(avg_review_score AS DOUBLE)          AS avg_review_score,
+        CAST(late_order_rate AS DOUBLE)           AS late_order_rate,
+        CAST(top_state AS VARCHAR)                AS top_state,
+        CAST(k AS INTEGER)                        AS k,
+        CAST(feature_set_version AS VARCHAR)      AS feature_set_version,
+        CAST(model_run_ts AS TIMESTAMP)           AS model_run_ts
+    FROM {{ source('ml', 'cluster_profile') }}
+),
 
-    UNION ALL
-
-    -- Cụm 2: Khách hàng cũ phổ thông, chi tiêu thấp nhưng rất hài lòng
+unassigned AS (
     SELECT
-        2 AS cluster_id,
-        'C2 · Lâu rồi · Chi thấp · Hài lòng' AS cluster_label,
-        'Khách hàng mua hàng từ lâu (median Recency 278 ngày), chi tiêu mức trung bình thấp (median GMV 107.02 BRL), nhưng có trải nghiệm giao vận và dịch vụ rất tốt (review TB 4.63 sao, giao sớm 14.15 ngày, tỷ lệ trễ chỉ 1.76%). Chiếm tỷ trọng lớn nhất với 60.72% khách hàng và 59.98% tổng GMV toàn sàn.' AS cluster_description,
-        56690 AS n_customers,
-        60.72 AS pct_customers,
-        9248487.09 AS sum_gmv,
-        59.98 AS pct_gmv,
-        278.0 AS median_recency_days,
-        107.02 AS median_total_gmv,
-        163.14 AS mean_total_gmv,
-        4.63 AS avg_review_score,
-        11.0 AS median_lead_time_days,
-        0.0176 AS late_order_rate,
-        'SP' AS top_state
-
-    UNION ALL
-
-    -- Cụm 3: Khách hàng mới / hoạt động gần đây, hài lòng cao
-    SELECT
-        3 AS cluster_id,
-        'C3 · Gần đây · Chi thấp · Hài lòng' AS cluster_label,
-        'Khách hàng mới mua hàng gần đây (median Recency 54 ngày), giá trị đơn hàng mức vừa phải (median GMV 97.43 BRL), mức độ hài lòng rất cao (review TB 4.51 sao, giao hàng cực nhanh với lead time 6 ngày, giao sớm 12.75 ngày, tỷ lệ trễ 2.81%). Phân bố tập trung lớn tại bang São Paulo (56.36%). Chiếm 22.65% khách hàng và đóng góp 20.13% tổng GMV toàn sàn.' AS cluster_description,
-        21145 AS n_customers,
-        22.65 AS pct_customers,
-        3103675.06 AS sum_gmv,
-        20.13 AS pct_gmv,
-        54.0 AS median_recency_days,
-        97.43 AS median_total_gmv,
-        146.78 AS mean_total_gmv,
-        4.51 AS avg_review_score,
-        6.0 AS median_lead_time_days,
-        0.0281 AS late_order_rate,
-        'SP' AS top_state
-
-    UNION ALL
-
-    -- Bản ghi giả lập Sentinel (-1) bảo vệ toàn vẹn tham chiếu khóa ngoại
-    SELECT
-        -1 AS cluster_id,
-        'Chưa phân cụm (Unassigned)' AS cluster_label,
-        'Bản ghi giả lập Sentinel (-1) đại diện cho khách hàng chưa đủ điều kiện phân cụm (chưa có đơn delivered) hoặc chưa chạy qua pipeline K-Means, bảo vệ toàn vẹn tham chiếu khóa ngoại.' AS cluster_description,
-        0 AS n_customers,
-        0.00 AS pct_customers,
-        0.00 AS sum_gmv,
-        0.00 AS pct_gmv,
-        NULL AS median_recency_days,
-        NULL AS median_total_gmv,
-        NULL AS mean_total_gmv,
-        NULL AS avg_review_score,
-        NULL AS median_lead_time_days,
-        NULL AS late_order_rate,
-        'N/A' AS top_state
+        -1                                        AS cluster_id,
+        'Chưa phân cụm'                           AS cluster_label,
+        'Khách chưa có kết quả phân cụm K-Means (bản ghi -1 bảo toàn toàn vẹn khóa ngoại).' AS cluster_description,
+        0                                         AS n_customers,
+        CAST(0 AS DECIMAL(5, 2))                  AS pct_customers,
+        CAST(0 AS DECIMAL(12, 2))                 AS sum_monetary,
+        CAST(0 AS DECIMAL(5, 2))                  AS pct_monetary,
+        CAST(NULL AS DOUBLE)                      AS median_recency_days,
+        CAST(NULL AS DOUBLE)                      AS mean_frequency,
+        CAST(NULL AS DOUBLE)                      AS repeat_rate,
+        CAST(NULL AS DECIMAL(10, 2))              AS median_monetary,
+        CAST(NULL AS DOUBLE)                      AS mean_monetary,
+        CAST(NULL AS DOUBLE)                      AS avg_review_score,
+        CAST(NULL AS DOUBLE)                      AS late_order_rate,
+        'N/A'                                     AS top_state,
+        CAST(NULL AS INTEGER)                     AS k,
+        CAST(NULL AS VARCHAR)                     AS feature_set_version,
+        CAST(NULL AS TIMESTAMP)                   AS model_run_ts
 )
 
-SELECT
-    cluster_id,
-    cluster_label,
-    cluster_description,
-    n_customers,
-    pct_customers,
-    sum_gmv,
-    pct_gmv,
-    median_recency_days,
-    median_total_gmv,
-    mean_total_gmv,
-    avg_review_score,
-    median_lead_time_days,
-    late_order_rate,
-    top_state,
-    CURRENT_TIMESTAMP AS dbt_created_at
-FROM cluster_definitions
-ORDER BY cluster_id ASC
-
+SELECT *, CURRENT_TIMESTAMP AS dbt_created_at FROM profile
+UNION ALL
+SELECT *, CURRENT_TIMESTAMP AS dbt_created_at FROM unassigned
+ORDER BY cluster_id

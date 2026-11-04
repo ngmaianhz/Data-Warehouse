@@ -1,48 +1,45 @@
+{{
+    config(
+        materialized='table',
+        schema='mart',
+        tags=['mart', 'customer', 'customer_cluster', 'gd4.12']
+    )
+}}
 
-{{ config(
-    materialized = 'table'
-) }}
+-- ==============================================================================
+-- GD4.12 - MART CUSTOMER RFM (đầu vào và kết quả K-Means)
+-- ==============================================================================
+-- Grain     : 1 dòng / customer_unique_id có ít nhất 1 đơn delivered
+-- Phụ thuộc : mart_customer_360 (đã lọc đơn delivered), source ml.customer_cluster
+-- Vai trò   : (1) 3 đặc trưng đầu vào K-Means: recency_days, frequency, monetary
+--             (2) gán khách vào cụm K-Means qua cluster_id (FK -> dim_customer_cluster)
+-- Nhóm đã bỏ chấm điểm RFM (r/f/m_score, segment); phân khúc khách dùng cụm K-Means.
+--
+-- Thứ tự chạy: build model này (cluster_id lấy theo lần chạy K-Means trước, hoặc -1)
+--              -> chạy notebooks/04_ml_clustering.ipynb (ghi ml.customer_cluster)
+--              -> build lại model này để lấy cluster_id mới.
+-- ==============================================================================
 
--- =====================================================
--- MODEL: mart_customer_rfm
--- TASK 1: Prepare Customer RFM Features
--- Grain: 1 row / customer_unique_id
--- Source: mart_customer_360
--- =====================================================
-
-WITH customer_rfm AS (
-
+WITH rfm AS (
     SELECT
-        -- Customer identifier
-        CAST(customer_unique_id AS VARCHAR)
-            AS customer_unique_id,
-
-        -- Recency: Days since customer's last delivered order
-        CAST(recency_days AS INTEGER)
-            AS recency_days,
-
-        -- Frequency: Total delivered orders
-        CAST(total_orders AS INTEGER)
-            AS frequency,
-
-        -- Monetary: Total GMV from delivered orders
-        CAST(total_gmv AS DECIMAL(10, 2))
-            AS monetary
-
+        customer_unique_id,
+        -- Recency: số ngày từ đơn delivered cuối cùng đến ngày mua delivered gần nhất toàn hệ thống
+        CAST(date_diff('day', last_order_date, MAX(last_order_date) OVER ()) AS INTEGER) AS recency_days,
+        -- Frequency: số đơn delivered
+        CAST(total_orders AS INTEGER)                                                     AS frequency,
+        -- Monetary: tổng GMV các đơn delivered (BRL)
+        CAST(total_gmv AS DECIMAL(10, 2))                                                 AS monetary
     FROM {{ ref('mart_customer_360') }}
-
 )
 
 SELECT
-    customer_unique_id,
-    recency_days,
-    frequency,
-    monetary,
-
-    -- Reserved for K-Means clustering task
-    CAST(NULL AS INTEGER) AS cluster_id,
-
-    -- Reserved for customer segmentation task
-    CAST(NULL AS VARCHAR) AS segment
-
-FROM customer_rfm
+    r.customer_unique_id,
+    r.recency_days,
+    r.frequency,
+    r.monetary,
+    -- Khách chưa có kết quả phân cụm nhận -1
+    CAST(COALESCE(c.cluster_id, -1) AS INTEGER) AS cluster_id,
+    CURRENT_TIMESTAMP                           AS dbt_created_at
+FROM rfm r
+LEFT JOIN {{ source('ml', 'customer_cluster') }} c
+    ON r.customer_unique_id = c.customer_unique_id

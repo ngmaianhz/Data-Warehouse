@@ -2,7 +2,7 @@ version: 2
 sources:
   - name: ml
     schema: ml
-    description: "Kết quả phân cụm K-Means do notebooks/04_ml_clustering.ipynb ghi ra (không do dbt build)."
+    description: "Kết quả K-Means trên recency_days, frequency, monetary (mart_customer_rfm) do notebooks/04_ml_clustering.ipynb ghi ra (không do dbt build). dbt đọc lại để dựng mart_customer_rfm.cluster_id và dim_customer_cluster."
     tables:
       - name: customer_cluster
         columns:
@@ -19,6 +19,10 @@ sources:
         columns:
           - name: cluster_id
             tests: [unique, not_null]
+          - name: cluster_label
+            tests: [unique, not_null]
+          - name: cluster_description
+            tests: [not_null]
       - name: kmeans_model_selection
         columns:
           - name: k

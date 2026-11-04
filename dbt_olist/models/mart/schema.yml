@@ -15,8 +15,8 @@ models:
       design_exception: "Đọc silver_orders cho delivery features do fact_sales chưa có order_estimated_delivery_date"
       business_definition: >
         Bảng phẳng Customer 360 tập trung toàn bộ đặc trưng của khách hàng
-        tại mức hạt customer_unique_id, phục vụ phân tích CLV, phân cụm K-Means
-        và giám sát chất lượng giao hàng.
+        tại mức hạt customer_unique_id, phục vụ phân tích CLV và giám sát chất lượng giao hàng.
+        RFM và cụm K-Means nằm ở mart_customer_rfm (theo ERD GD4.1).
     config:
       tags: ['mart', 'customer', 'customer_360', 'gd4.2', 'gd4.4']
 
@@ -173,69 +173,70 @@ models:
         tests:
           - not_null
 
-      # --- 8. RFM & Phân khúc khách hàng (GD4.3 & GD4.6) ---
+  # ==============================================================================
+  # mart_customer_rfm — GD4.12
+  # ==============================================================================
+  - name: mart_customer_rfm
+    description: >
+      Bảng RFM 1 dòng / customer_unique_id (khách có ít nhất 1 đơn delivered).
+      Chứa 3 đặc trưng đầu vào K-Means (recency_days, frequency, monetary) và cluster_id
+      gán từ kết quả K-Means (source ml.customer_cluster). Nhóm đã bỏ chấm điểm RFM (r/f/m_score, segment).
+    meta:
+      owner: "@data-team"
+      task: "GD4.12"
+      run_order: "build model -> chạy notebooks/04_ml_clustering.ipynb -> build lại model để lấy cluster_id"
+    config:
+      tags: ['mart', 'customer', 'customer_cluster', 'gd4.12']
+
+    columns:
+      - name: customer_unique_id
+        data_type: varchar
+        description: "Khóa khách hàng (PK; FK logic sang mart_customer_360)"
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('mart_customer_360')
+              field: customer_unique_id
+
       - name: recency_days
-        data_type: bigint
-        description: "Số ngày kể từ đơn mua gần nhất đến ngày kết thúc quan sát"
+        data_type: integer
+        description: "Số ngày từ đơn delivered cuối cùng đến ngày mua delivered gần nhất toàn hệ thống"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 0"
 
-      - name: snapshot_date
-        data_type: date
-        description: "Mốc ngày kết thúc quan sát toàn hệ thống dùng để tính recency_days"
-        tests:
-          - not_null
-
-      - name: is_repeat_customer
+      - name: frequency
         data_type: integer
-        description: "Cờ nhị phân xác định khách hàng mua lặp lại (1 nếu total_orders > 1, 0 nếu chỉ mua 1 đơn)"
+        description: "Số đơn delivered (= mart_customer_360.total_orders)"
         tests:
           - not_null
-          - accepted_values:
-              values: [0, 1]
-              quote: false
+          - dbt_utils.expression_is_true:
+              expression: ">= 1"
 
-      - name: r_score
+      - name: monetary
+        data_type: decimal(10, 2)
+        description: "Tổng GMV các đơn delivered, BRL (= mart_customer_360.total_gmv)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: cluster_id
         data_type: integer
-        description: "Điểm phân vị Recency 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = mua gần nhất"
+        description: "Cụm K-Means (FK sang dim_customer_cluster); -1 nếu chưa có kết quả phân cụm"
         tests:
           - not_null
-          - dbt_utils.accepted_range:
-              min_value: 1
-              max_value: 5
+          - relationships:
+              to: ref('dim_customer_cluster')
+              field: cluster_id
 
-      - name: f_score
-        data_type: integer
-        description: "Điểm tần suất Frequency (Thang riêng 1-3 do 97% khách hàng chỉ mua 1 đơn)"
+      - name: dbt_created_at
+        data_type: timestamp
+        description: "Thời điểm nạp dữ liệu"
         tests:
           - not_null
-          - dbt_utils.accepted_range:
-              min_value: 1
-              max_value: 3
-
-      - name: m_score
-        data_type: integer
-        description: "Điểm phân vị Monetary 1-5 theo PERCENT_RANK, các khách cùng giá trị nhận cùng điểm; 5 = chi tiêu cao nhất"
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              min_value: 1
-              max_value: 5
-
-      - name: segment
-        data_type: varchar
-        description: "Nhãn phân khúc khách hàng theo ma trận điểm số RFM"
-        tests:
-          - not_null
-          - accepted_values:
-              values:
-                - 'Khách hàng giá trị cao'
-                - 'Khách hàng có nguy cơ rời bỏ'
-                - 'Khách hàng mới / tiềm năng'
-                - 'Khách hàng mua thường xuyên'
-                - 'Khách hàng phổ thông'
 
   # ==============================================================================
   # obs_pipeline_health — GD4.6
@@ -289,95 +290,106 @@ models:
   # ==============================================================================
   - name: dim_customer_cluster
     description: >
-      Bảng chiều phân cụm khách hàng (Customer Cluster Dimension) tại tầng Data Mart.
-      Grain: 1 dòng / cluster_id (1 dòng đại diện cho 1 cụm phân khúc khách hàng).
-      Đặc tả theo thiết kế [DW] GD4.1 Customer Data Mart Design và hình thành từ mô hình K-Means (K=3).
+      Bảng chiều phân cụm khách hàng, 1 dòng / cluster_id (thêm dòng -1 cho khách chưa phân cụm).
+      Số liệu, nhãn và mô tả đọc từ source ml.cluster_profile do notebooks/04_ml_clustering.ipynb ghi ra
+      (K-Means trên recency_days, frequency, monetary của mart_customer_rfm), không gõ tay.
     meta:
       owner: "@data-team"
       task: "GD4.12"
-      business_definition: >
-        Bảng chiều quản lý danh mục và chân dung các cụm phân khúc khách hàng theo thuật toán K-Means,
-        bao gồm nhãn phân cụm (cluster_label), mô tả chi tiết đặc điểm hành vi và các chỉ số định lượng
-        (Recency, Monetary, CSAT, Delivery Lead Time, Late Order Rate).
     config:
       tags: ['mart', 'customer', 'customer_cluster', 'gd4.12']
 
     columns:
       - name: cluster_id
         data_type: integer
-        description: "Mã định danh cụm khách hàng (PK: 1, 2, 3 và -1 cho Sentinel)"
+        description: "Mã cụm (PK); -1 = chưa phân cụm"
         tests:
           - unique
           - not_null
 
       - name: cluster_label
         data_type: varchar
-        description: "Nhãn mô tả cụm khách hàng (ví dụ: High Value / C1 · Lâu rồi · Chi cao · Không hài lòng)"
+        description: "Tên cụm do notebook sinh theo luật từ chân dung cụm"
         tests:
           - unique
           - not_null
 
       - name: cluster_description
         data_type: varchar
-        description: "Mô tả chi tiết chân dung và đặc điểm hành vi của cụm khách hàng"
+        description: "Mô tả đặc điểm cụm, sinh từ các chỉ số của cụm"
         tests:
           - not_null
 
       - name: n_customers
         data_type: integer
-        description: "Số lượng khách hàng thuộc cụm"
+        description: "Số khách trong cụm"
         tests:
           - not_null
 
       - name: pct_customers
         data_type: decimal(5, 2)
-        description: "Tỷ lệ phần trăm khách hàng trong cụm so với toàn bộ tệp khách hàng"
+        description: "% khách của cụm trên tổng số khách"
         tests:
           - not_null
 
-      - name: sum_gmv
+      - name: sum_monetary
         data_type: decimal(12, 2)
-        description: "Tổng giá trị GMV mà cụm đóng góp (BRL)"
+        description: "Tổng monetary (GMV delivered, BRL) của cụm"
         tests:
           - not_null
 
-      - name: pct_gmv
+      - name: pct_monetary
         data_type: decimal(5, 2)
-        description: "Tỷ trọng phần trăm GMV của cụm trên toàn bộ doanh thu sàn"
+        description: "% monetary của cụm trên tổng"
         tests:
           - not_null
 
       - name: median_recency_days
         data_type: double
-        description: "Trung vị số ngày kể từ lần mua hàng gần nhất của cụm"
+        description: "Trung vị recency_days của cụm"
 
-      - name: median_total_gmv
-        data_type: decimal(10, 2)
-        description: "Trung vị giá trị GMV của khách hàng trong cụm (BRL)"
-
-      - name: mean_total_gmv
+      - name: mean_frequency
         data_type: double
-        description: "Giá trị GMV trung bình của khách hàng trong cụm (BRL)"
+        description: "Số đơn delivered trung bình của cụm"
+
+      - name: repeat_rate
+        data_type: double
+        description: "Tỷ lệ khách có từ 2 đơn delivered (0-1)"
+
+      - name: median_monetary
+        data_type: decimal(10, 2)
+        description: "Trung vị monetary của cụm (BRL)"
+
+      - name: mean_monetary
+        data_type: double
+        description: "Monetary trung bình của cụm (BRL)"
 
       - name: avg_review_score
         data_type: double
-        description: "Điểm đánh giá trải nghiệm dịch vụ trung bình của cụm (1.00 - 5.00 sao)"
-
-      - name: median_lead_time_days
-        data_type: double
-        description: "Thời gian giao hàng trung vị của cụm (ngày)"
+        description: "Điểm review trung bình của cụm (chỉ để mô tả, không đưa vào K-Means)"
 
       - name: late_order_rate
         data_type: double
-        description: "Tỷ lệ đơn hàng bị giao trễ hạn so với ngày ước tính của cụm"
+        description: "Tỷ lệ đơn giao trễ của cụm, 0-1 (chỉ để mô tả, không đưa vào K-Means)"
 
       - name: top_state
         data_type: varchar
-        description: "Bang có số lượng khách hàng tập trung đông nhất trong cụm"
+        description: "Bang có nhiều khách nhất trong cụm"
+
+      - name: k
+        data_type: integer
+        description: "Số cụm của lần chạy mô hình"
+
+      - name: feature_set_version
+        data_type: varchar
+        description: "Phiên bản bộ đặc trưng (rfm_v1)"
+
+      - name: model_run_ts
+        data_type: timestamp
+        description: "Thời điểm chạy mô hình"
 
       - name: dbt_created_at
         data_type: timestamp
-        description: "Thời điểm bản ghi được tạo ra trong Data Mart"
+        description: "Thời điểm nạp dữ liệu"
         tests:
           - not_null
-
