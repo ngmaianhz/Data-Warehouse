@@ -16,3 +16,6 @@ target/
 dbt_packages/
 logs/
 .user.yml
+
+# Streamlit secrets (token MotherDuck)
+.streamlit/secrets.toml
