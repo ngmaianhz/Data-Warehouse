@@ -1,0 +1,2 @@
+﻿fact_revenue,fact_gmv,fact_orders,fact_customers,orders_missing_customer,mart_revenue,mart_gmv,mart_orders,mart_customers,mart_distinct_customers,delta_revenue_correct,delta_gmv,delta_orders,delta_customers,delta_duplicate_mart_customers,delta_revenue_vs_gmv_not_expected_zero
+13221498.11,15419773.75,96478,93358,0,13221498.11,15419773.75,96478,93358,93358,0.00,0.00,0,0,0,-2198275.64

@@ -1,0 +1,6 @@
+﻿cluster_id,cluster_label,observed_customers,profile_customers,delta_customers,observed_monetary,sum_monetary,delta_monetary
+-1,Chưa phân cụm,0,0,0,,0.00,0.00
+1,C1 · Mua lặp,2801,2801,0,864187.46,864187.46,0.00
+2,C2 · Mới mua · chi cao,27585,27585,0,8855497.14,8855497.14,0.00
+3,C3 · Lâu chưa mua · chi thấp,27014,27014,0,3188980.29,3188980.29,0.00
+4,C4 · Mới mua · chi thấp,35958,35958,0,2511108.86,2511108.86,0.00
